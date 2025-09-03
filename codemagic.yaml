@@ -3,7 +3,6 @@ workflows:
     name: Build Android App
     max_build_duration: 60
     environment:
-      image: default
       java: 17
     scripts:
       - name: Clean project
