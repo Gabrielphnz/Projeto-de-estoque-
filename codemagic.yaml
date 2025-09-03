@@ -3,16 +3,17 @@ workflows:
     name: Build Android App
     max_build_duration: 60
     environment:
-      java: 17         # versão do Java
+      image: default
+      java: 17
     scripts:
       - name: Clean project
-        script: ./gradlew clean
+        script: gradle clean
 
       - name: Assemble Debug APK
-        script: ./gradlew assembleDebug
+        script: gradle assembleDebug
 
       - name: Assemble Release APK
-        script: ./gradlew assembleRelease
+        script: gradle assembleRelease
 
     artifacts:
       - app/build/outputs/**/*.apk
