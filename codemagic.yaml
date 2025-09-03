@@ -3,16 +3,15 @@ workflows:
     name: Build Android App
     max_build_duration: 30
     environment:
+      android: latest
       java: 17
     scripts:
       - name: Listar conteúdo do diretório
         script: ls -la
-      - name: Definir permissões do Gradle Wrapper
-        script: chmod +x gradlew
       - name: Limpar projeto
-        script: ./gradlew clean --stacktrace --info
+        script: ./gradlew clean
       - name: Construir APK de Depuração
-        script: ./gradlew assembleDebug --stacktrace --info
+        script: ./gradlew assembleDebug
     artifacts:
       - app/build/outputs/**/*.apk
     publishing:
