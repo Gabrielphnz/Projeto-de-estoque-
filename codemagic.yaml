@@ -1,18 +1,23 @@
 workflows:
   android-app:
     name: Build Android App
-    max_build_duration: 30
+    max_build_duration: 60
     environment:
-      android: latest
-      java: 17
+      java: 17         # versão do Java
     scripts:
       - name: Clean project
         script: ./gradlew clean
-      - name: Build Debug APK
+
+      - name: Assemble Debug APK
         script: ./gradlew assembleDebug
+
+      - name: Assemble Release APK
+        script: ./gradlew assembleRelease
+
     artifacts:
       - app/build/outputs/**/*.apk
+
     publishing:
       email:
         recipients:
-          - your-email@example.com
+          - gabrielphnz@gmail.com
