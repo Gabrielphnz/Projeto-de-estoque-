@@ -4,8 +4,8 @@ import android.app.Application
 import android.content.Context
 import androidx.compose.runtime.mutableStateListOf
 import androidx.lifecycle.AndroidViewModel
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Data model classes used by the app. A [Product] represents an item that can
@@ -13,19 +13,38 @@ import com.google.gson.reflect.TypeToken
  * a product. An [InventoryMovement] records a change to the inventory. All
  * three types are serialised to and from JSON via [Gson] for persistence.
  */
+/**
+ * Represents a product that can be stocked in the system.  The [setor]
+ * (sector) identifies which logical group the product belongs to.  Both
+ * [descricao] and [setor] are mutable so that products can be edited
+ * after creation (for example when renaming a sector).
+ */
 data class Product(
     val codigo: String,
-    val descricao: String,
-    val setor: String
+    var descricao: String,
+    var setor: String
 )
 
+/**
+ * Represents an item currently held in inventory.  It is uniquely
+ * identified by [codigo].  The [descricao] and [setor] fields are
+ * mutable so that updates can propagate when editing product or sector
+ * information.  The [total] field tracks the current quantity on hand.
+ */
 data class InventoryItem(
     val codigo: String,
-    val descricao: String,
-    val setor: String,
+    var descricao: String,
+    var setor: String,
     var total: Float
 )
 
+/**
+ * Records a change to the inventory.  Each movement notes the product
+ * [codigo], description and sector at the time of the update, the
+ * [quantidade] delta applied (positive or negative) and the moment it
+ * occurred.  Movements are immutable and provide a historical audit
+ * trail.
+ */
 data class InventoryMovement(
     val codigo: String,
     val descricao: String,
@@ -41,83 +60,206 @@ data class InventoryMovement(
  */
 class EstoqueViewModel(application: Application) : AndroidViewModel(application) {
     private val prefs = application.getSharedPreferences("estoque_prefs", Context.MODE_PRIVATE)
-    private val gson = Gson()
 
-    // Mutable lists backing Compose state. When items are added or removed
-    // Compose will update the UI accordingly.
+    /**
+     * Mutable lists backing Compose state. When items are added or removed
+     * Compose will update the UI accordingly.  In addition to products,
+     * inventory and history we maintain a list of available sectors.  The
+     * sectors list is persisted alongside the other collections so that
+     * user‑defined sectors survive app restarts.
+     */
     val produtos = mutableStateListOf<Product>()
     val estoque = mutableStateListOf<InventoryItem>()
     val historico = mutableStateListOf<InventoryMovement>()
+    val setores = mutableStateListOf<String>()
 
     init {
         loadData()
+        // If no sectors were loaded, initialise with three default ones
+        if (setores.isEmpty()) {
+            setores.addAll(listOf("Açougue", "Hortifruti", "Outros"))
+        }
     }
 
     /**
-     * Load saved data from SharedPreferences. If no saved data is present
-     * the lists remain empty. Any corrupt JSON is ignored to avoid crashes.
+     * Load saved data from SharedPreferences.  Data is encoded in JSON
+     * format using org.json arrays and objects.  Corrupt or missing
+     * entries are ignored to avoid crashes.
      */
     private fun loadData() {
-        // Load products
-        val productsJson = prefs.getString("products", null)
-        if (!productsJson.isNullOrBlank()) {
+        produtos.clear()
+        estoque.clear()
+        historico.clear()
+        setores.clear()
+        prefs.getString("products", null)?.let { json ->
             try {
-                val type = object : TypeToken<List<Product>>() {}.type
-                produtos.clear()
-                produtos.addAll(gson.fromJson(productsJson, type))
-            } catch (e: Exception) {
-                // ignore corrupt data
+                produtos.addAll(decodeProducts(json))
+            } catch (_: Exception) {
+                // ignore corrupt product data
             }
         }
-        // Load inventory
-        val invJson = prefs.getString("inventory", null)
-        if (!invJson.isNullOrBlank()) {
+        prefs.getString("inventory", null)?.let { json ->
             try {
-                val type = object : TypeToken<List<InventoryItem>>() {}.type
-                estoque.clear()
-                estoque.addAll(gson.fromJson(invJson, type))
-            } catch (e: Exception) {
-                // ignore corrupt data
+                estoque.addAll(decodeInventory(json))
+            } catch (_: Exception) {
+                // ignore corrupt inventory data
             }
         }
-        // Load history
-        val histJson = prefs.getString("history", null)
-        if (!histJson.isNullOrBlank()) {
+        prefs.getString("history", null)?.let { json ->
             try {
-                val type = object : TypeToken<List<InventoryMovement>>() {}.type
-                historico.clear()
-                historico.addAll(gson.fromJson(histJson, type))
-            } catch (e: Exception) {
-                // ignore corrupt data
+                historico.addAll(decodeHistory(json))
+            } catch (_: Exception) {
+                // ignore corrupt history data
+            }
+        }
+        prefs.getString("sectors", null)?.let { json ->
+            try {
+                setores.addAll(decodeSectors(json))
+            } catch (_: Exception) {
+                // ignore corrupt sectors data
             }
         }
     }
 
     /**
-     * Persist current state to SharedPreferences. Each list is
-     * serialised separately to its own key.
+     * Persist current state to SharedPreferences by serialising each list
+     * into JSON strings.  Using apply() writes asynchronously.
      */
     private fun persistData() {
         prefs.edit().apply {
-            putString("products", gson.toJson(produtos))
-            putString("inventory", gson.toJson(estoque))
-            putString("history", gson.toJson(historico))
+            putString("products", encodeProducts(produtos))
+            putString("inventory", encodeInventory(estoque))
+            putString("history", encodeHistory(historico))
+            putString("sectors", encodeSectors(setores))
             apply()
         }
     }
 
     /**
-     * Add a new product or update an existing one. The product is uniquely
-     * identified by its [codigo]. If a product with the same code already
-     * exists it will be replaced; otherwise it will be appended. After
-     * modification the data is persisted.
+     * Encode and decode helper functions for each data type.  JSON is
+     * constructed manually via org.json to avoid introducing an external
+     * serialisation dependency like Gson.  See decode functions for the
+     * inverse operations.
+     */
+    private fun encodeProducts(list: List<Product>): String {
+        val arr = JSONArray()
+        list.forEach { p ->
+            val obj = JSONObject()
+            obj.put("codigo", p.codigo)
+            obj.put("descricao", p.descricao)
+            obj.put("setor", p.setor)
+            arr.put(obj)
+        }
+        return arr.toString()
+    }
+
+    private fun decodeProducts(json: String): List<Product> {
+        val arr = JSONArray(json)
+        val items = mutableListOf<Product>()
+        for (i in 0 until arr.length()) {
+            val obj = arr.getJSONObject(i)
+            val codigo = obj.optString("codigo", "")
+            val descricao = obj.optString("descricao", "")
+            val setor = obj.optString("setor", "")
+            if (codigo.isNotBlank()) {
+                items.add(Product(codigo, descricao, setor))
+            }
+        }
+        return items
+    }
+
+    private fun encodeInventory(list: List<InventoryItem>): String {
+        val arr = JSONArray()
+        list.forEach { i ->
+            val obj = JSONObject()
+            obj.put("codigo", i.codigo)
+            obj.put("descricao", i.descricao)
+            obj.put("setor", i.setor)
+            obj.put("total", i.total)
+            arr.put(obj)
+        }
+        return arr.toString()
+    }
+
+    private fun decodeInventory(json: String): List<InventoryItem> {
+        val arr = JSONArray(json)
+        val items = mutableListOf<InventoryItem>()
+        for (i in 0 until arr.length()) {
+            val obj = arr.getJSONObject(i)
+            val codigo = obj.optString("codigo", "")
+            val descricao = obj.optString("descricao", "")
+            val setor = obj.optString("setor", "")
+            val total = obj.optDouble("total", 0.0).toFloat()
+            if (codigo.isNotBlank()) {
+                items.add(InventoryItem(codigo, descricao, setor, total))
+            }
+        }
+        return items
+    }
+
+    private fun encodeHistory(list: List<InventoryMovement>): String {
+        val arr = JSONArray()
+        list.forEach { m ->
+            val obj = JSONObject()
+            obj.put("codigo", m.codigo)
+            obj.put("descricao", m.descricao)
+            obj.put("setor", m.setor)
+            obj.put("quantidade", m.quantidade)
+            obj.put("timestamp", m.timestamp)
+            arr.put(obj)
+        }
+        return arr.toString()
+    }
+
+    private fun decodeHistory(json: String): List<InventoryMovement> {
+        val arr = JSONArray(json)
+        val items = mutableListOf<InventoryMovement>()
+        for (i in 0 until arr.length()) {
+            val obj = arr.getJSONObject(i)
+            val codigo = obj.optString("codigo", "")
+            val descricao = obj.optString("descricao", "")
+            val setor = obj.optString("setor", "")
+            val quantidade = obj.optDouble("quantidade", 0.0).toFloat()
+            val timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+            if (codigo.isNotBlank()) {
+                items.add(InventoryMovement(codigo, descricao, setor, quantidade, timestamp))
+            }
+        }
+        return items
+    }
+
+    private fun encodeSectors(list: List<String>): String {
+        val arr = JSONArray()
+        list.forEach { s -> arr.put(s) }
+        return arr.toString()
+    }
+
+    private fun decodeSectors(json: String): List<String> {
+        val arr = JSONArray(json)
+        val items = mutableListOf<String>()
+        for (i in 0 until arr.length()) {
+            val name = arr.optString(i)
+            if (name.isNotBlank()) items.add(name)
+        }
+        return items
+    }
+
+    /**
+     * Add a new product or update an existing one.  Products are uniquely
+     * identified by their [Product.codigo].  When updating, only the
+     * description and sector may change—new codes create new entries.  The
+     * list of sectors is updated automatically if a product uses a new
+     * sector name.  After mutation the data is persisted.
      */
     fun upsertProduct(product: Product) {
-        val existingIndex = produtos.indexOfFirst { it.codigo == product.codigo }
-        if (existingIndex >= 0) {
-            produtos[existingIndex] = product
+        val idx = produtos.indexOfFirst { it.codigo == product.codigo }
+        if (idx >= 0) {
+            produtos[idx] = product
         } else {
             produtos.add(product)
+        }
+        if (product.setor.isNotBlank() && setores.none { it.equals(product.setor, ignoreCase = true) }) {
+            setores.add(product.setor)
         }
         persistData()
     }
@@ -144,26 +286,21 @@ class EstoqueViewModel(application: Application) : AndroidViewModel(application)
      */
     fun updateInventory(codigo: String, descricao: String, setor: String, quantidade: Float) {
         if (codigo.isBlank()) return
-        // Find existing inventory entry by code
-        val index = estoque.indexOfFirst { it.codigo == codigo }
-        if (index >= 0) {
-            val item = estoque[index]
+        val idx = estoque.indexOfFirst { it.codigo == codigo }
+        if (idx >= 0) {
+            val item = estoque[idx]
             item.total += quantidade
-            // Update description or sector if not empty
             if (descricao.isNotBlank()) item.descricao = descricao
             if (setor.isNotBlank()) item.setor = setor
-            estoque[index] = item
+            estoque[idx] = item
         } else {
-            // Create new entry
-            val newItem = InventoryItem(
-                codigo = codigo,
-                descricao = descricao,
-                setor = setor,
-                total = quantidade
-            )
+            val newItem = InventoryItem(codigo, descricao, setor, quantidade)
             estoque.add(newItem)
         }
-        // Record movement
+        // update sectors list if needed
+        if (setor.isNotBlank() && setores.none { it.equals(setor, ignoreCase = true) }) {
+            setores.add(setor)
+        }
         if (quantidade != 0f) {
             historico.add(InventoryMovement(codigo, descricao, setor, quantidade))
         }
@@ -187,5 +324,123 @@ class EstoqueViewModel(application: Application) : AndroidViewModel(application)
         estoque.clear()
         historico.clear()
         persistData()
+    }
+
+    /**
+     * Import a set of products from a CSV string.  Each line should
+     * contain at least three fields separated by semicolons or commas:
+     * código;descrição;setor.  Lines beginning with non‑numeric codes or
+     * those missing required fields are skipped.  New sectors are added
+     * automatically as necessary.  After import the data is persisted.
+     */
+    fun importProductsFromCsv(csvContent: String) {
+        val lines = csvContent.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }
+        lines.forEachIndexed { index, line ->
+            // Skip header if present (e.g. first row containing non‑numeric code)
+            val parts = line.split(';', ',')
+            if (parts.size >= 3) {
+                val codigo = parts[0].trim()
+                val descricao = parts[1].trim()
+                val setor = parts[2].trim()
+                if (codigo.isNotBlank() && descricao.isNotBlank() && setor.isNotBlank()) {
+                    upsertProduct(Product(codigo, descricao, setor))
+                }
+            }
+        }
+        persistData()
+    }
+
+    /**
+     * Generate a CSV string representing the current inventory for a
+     * specific sector.  The header row is included.  Quantities are
+     * formatted with one decimal place.
+     */
+    fun generateInventoryCsv(setor: String): String {
+        val sb = StringBuilder()
+        sb.append("codigo;descricao;setor;total\n")
+        estoque.filter { it.setor == setor }.forEach { item ->
+            sb.append(item.codigo).append(';')
+            sb.append(item.descricao).append(';')
+            sb.append(item.setor).append(';')
+            sb.append(String.format("%.1f", item.total)).append('\n')
+        }
+        return sb.toString()
+    }
+
+    /**
+     * Generate a CSV string representing the list of products for a
+     * specific sector.  The header row is included.
+     */
+    fun generateProductsCsv(setor: String): String {
+        val sb = StringBuilder()
+        sb.append("codigo;descricao;setor\n")
+        produtos.filter { it.setor == setor }.forEach { item ->
+            sb.append(item.codigo).append(';')
+            sb.append(item.descricao).append(';')
+            sb.append(item.setor).append('\n')
+        }
+        return sb.toString()
+    }
+
+    /**
+     * Add a new sector to the list.  Empty names are ignored.  If a
+     * sector with the same name (case insensitive) already exists it
+     * will not be added again.  After modification the data is persisted.
+     */
+    fun addSector(name: String) {
+        val cleaned = name.trim()
+        if (cleaned.isBlank()) return
+        if (setores.any { it.equals(cleaned, ignoreCase = true) }) return
+        setores.add(cleaned)
+        persistData()
+    }
+
+    /**
+     * Rename an existing sector.  All products, inventory items and
+     * historical movements referencing the old name will be updated to the
+     * new name.  If the old name is not found or the new name is blank,
+     * nothing happens.
+     */
+    fun editSector(oldName: String, newName: String) {
+        val cleanedNew = newName.trim()
+        if (cleanedNew.isBlank()) return
+        val index = setores.indexOfFirst { it == oldName }
+        if (index >= 0) {
+            setores[index] = cleanedNew
+            // update products
+            produtos.forEachIndexed { i, p ->
+                if (p.setor == oldName) {
+                    produtos[i] = p.copy(setor = cleanedNew)
+                }
+            }
+            // update inventory
+            estoque.forEachIndexed { i, item ->
+                if (item.setor == oldName) {
+                    estoque[i] = item.copy(setor = cleanedNew)
+                }
+            }
+            // update history
+            historico.forEachIndexed { i, m ->
+                if (m.setor == oldName) {
+                    historico[i] = m.copy(setor = cleanedNew)
+                }
+            }
+            persistData()
+        }
+    }
+
+    /**
+     * Remove a sector from the list.  All products, inventory items and
+     * historical movements associated with the removed sector are also
+     * deleted.  If the sector name is not found, nothing happens.
+     */
+    fun deleteSector(name: String) {
+        val removed = setores.remove(name)
+        if (removed) {
+            produtos.removeAll { it.setor == name }
+            estoque.removeAll { it.setor == name }
+            historico.removeAll { it.setor == name }
+            persistData()
+        }
     }
 }
