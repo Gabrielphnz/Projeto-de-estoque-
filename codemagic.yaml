@@ -1,7 +1,7 @@
 workflows:
   android-app:
     name: Build Android App
-    max_build_duration: 180
+    max_build_duration: 120
     environment:
       java: 17
       vars:
