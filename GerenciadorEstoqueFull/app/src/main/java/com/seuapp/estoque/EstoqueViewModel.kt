@@ -73,6 +73,14 @@ class EstoqueViewModel(application: Application) : AndroidViewModel(application)
     val historico = mutableStateListOf<InventoryMovement>()
     val setores = mutableStateListOf<String>()
 
+    /**
+     * Holds products imported from CSV that did not specify a sector.  After
+     * importing, the UI can prompt the user to assign these products to a
+     * chosen sector.  This list is not persisted to disk and exists only
+     * during the lifetime of the ViewModel.
+     */
+    val pendingImported = mutableStateListOf<Product>()
+
     init {
         loadData()
         // If no sectors were loaded, initialise with three default ones
@@ -334,6 +342,8 @@ class EstoqueViewModel(application: Application) : AndroidViewModel(application)
      * automatically as necessary.  After import the data is persisted.
      */
     fun importProductsFromCsv(csvContent: String) {
+        // Clear any previous pending imports
+        pendingImported.clear()
         /*
          * Import products from a CSV string. Lines may be separated by either
          * semicolons or commas. We trim whitespace on each line and ignore
@@ -348,17 +358,48 @@ class EstoqueViewModel(application: Application) : AndroidViewModel(application)
             .filter { it.isNotEmpty() }
         lines.forEachIndexed { index, line ->
             val parts = line.split(';', ',')
-            if (parts.size >= 3) {
+            if (parts.size >= 2) {
                 val codigo = parts[0].trim()
                 val descricao = parts[1].trim()
-                val setor = parts[2].trim()
+                val setor: String = if (parts.size >= 3) parts[2].trim() else ""
                 // skip potential header rows on the first line (codigo or non‑numeric code)
                 if (index == 0 && codigo.equals("codigo", ignoreCase = true)) return@forEachIndexed
-                if (codigo.isNotBlank() && descricao.isNotBlank() && setor.isNotBlank()) {
-                    upsertProduct(Product(codigo, descricao, setor))
+                if (codigo.isNotBlank() && descricao.isNotBlank()) {
+                    if (setor.isNotBlank()) {
+                        upsertProduct(Product(codigo, descricao, setor))
+                    } else {
+                        // Sector missing: add to list for later assignment
+                        val product = Product(codigo, descricao, "")
+                        upsertProduct(product)
+                        pendingImported.add(product)
+                    }
                 }
             }
         }
+        persistData()
+    }
+
+    /**
+     * Assign a single sector to all products that were imported without one.  If
+     * the sector name is blank nothing happens.  Newly assigned products will
+     * be updated in the products list and persisted.  After assignment the
+     * pending list is cleared.
+     */
+    fun assignSectorToPending(sector: String) {
+        val cleaned = sector.trim()
+        if (cleaned.isBlank()) return
+        pendingImported.forEach { product ->
+            // update sector of product in the products list
+            val idx = produtos.indexOfFirst { it.codigo == product.codigo }
+            if (idx >= 0) {
+                produtos[idx].setor = cleaned
+            }
+        }
+        // Ensure the sector exists in the sectors list
+        if (setores.none { it.equals(cleaned, ignoreCase = true) }) {
+            setores.add(cleaned)
+        }
+        pendingImported.clear()
         persistData()
     }
 

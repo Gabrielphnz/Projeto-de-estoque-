@@ -104,6 +104,9 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
 
     // ActivityResult launcher for CSV import.  Accept both comma and
     // semicolon separated files with a text MIME type.
+    // Track whether to show the sector assignment dialog after importing CSVs with missing sector
+    var showAssignSectorDialog by remember { mutableStateOf(false) }
+    var selectedAssignSector by remember { mutableStateOf("") }
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
@@ -120,6 +123,11 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
                 context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
                     val content = reader.readText()
                     viewModel.importProductsFromCsv(content)
+                    // If any products were imported without a sector, prompt user to assign
+                    if (viewModel.pendingImported.isNotEmpty()) {
+                        showAssignSectorDialog = true
+                        selectedAssignSector = ""
+                    }
                     mensagem = "CSV importado com sucesso"
                 }
             } catch (e: Exception) {
@@ -212,6 +220,61 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
             importLauncher.launch(arrayOf("text/*", "text/csv", "text/plain"))
         }) {
             Text("Importar CSV")
+        }
+
+        // If products were imported without a sector, prompt the user to assign a sector
+        if (showAssignSectorDialog) {
+            AlertDialog(
+                onDismissRequest = { showAssignSectorDialog = false },
+                title = { Text("Atribuir setor aos produtos importados") },
+                text = {
+                    Column {
+                        Text("Selecione um setor para os produtos importados sem setor.")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        // Dropdown for choosing the sector
+                        var expandAssign by remember { mutableStateOf(false) }
+                        Box {
+                            Button(
+                                onClick = { expandAssign = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(text = if (selectedAssignSector.isNotBlank()) selectedAssignSector else "Selecione o setor")
+                            }
+                            DropdownMenu(
+                                expanded = expandAssign,
+                                onDismissRequest = { expandAssign = false },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                viewModel.setores.forEach { s ->
+                                    DropdownMenuItem(
+                                        text = { Text(s) },
+                                        onClick = {
+                                            selectedAssignSector = s
+                                            expandAssign = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (selectedAssignSector.isNotBlank()) {
+                            viewModel.assignSectorToPending(selectedAssignSector)
+                            showAssignSectorDialog = false
+                            mensagem = "Produtos importados atribuídos ao setor " + selectedAssignSector
+                        }
+                    }) {
+                        Text("Atribuir")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAssignSectorDialog = false }) {
+                        Text("Cancelar")
+                    }
+                }
+            )
         }
     }
 }
