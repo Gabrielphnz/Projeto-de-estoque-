@@ -1,48 +1,46 @@
 workflows:
-  android-app:
-    name: Build Android App
-    max_build_duration: 30
+  android-compose-app:
+    name: Build Android Compose App
+    max_build_duration: 60
     environment:
+      groups:
+        - android_credentials # Opcional, para assinar o APK
       java: 17
-      vars:
-        GRADLE_VERSION: "8.14.1"
-        GITHUB_REPO_URL: "https://$GITHUB_TOKEN@github.com/Gabrielphnz/Projeto-de-estoque-.git"
+      node: 20 # Útil para outros scripts, mesmo em Android
     scripts:
-      - name: Verificar e clonar repositório manualmente
+      - name: Configurar Ambiente Android
         script: |
-          echo "Diretório inicial: $PWD"
-          ls -la
-          rm -rf .
-          git clone --branch main $GITHUB_REPO_URL .
-          echo "Diretório após clonagem: $PWD"
-          ls -la
-      - name: Definir permissões do Gradle Wrapper (fallback)
+          echo "Configurando SDKMAN! e Java..."
+          sudo apt-get update
+          sudo apt-get install --yes unzip zip
+          sdkmanager "cmake;3.22.1" # Pode ser necessário para algumas dependências nativas
+
+      - name: Listar Estrutura do Projeto
         script: |
-          if [ -f gradlew ]; then
-            chmod +x gradlew
-          else
-            echo "Gradle Wrapper não encontrado. Instalando Gradle global."
-            wget https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip
-            unzip gradle-$GRADLE_VERSION-bin.zip
-            export PATH=$PATH:$PWD/gradle-$GRADLE_VERSION/bin
-            gradle --version
-          fi
-      - name: Limpar projeto
+          echo "Diretório de trabalho: $PWD"
+          echo "Estrutura do projeto:"
+          find . -name '*.gradle' -o -name '*.kt' -o -name '*.xml' -o -name '*.yaml' -o -name 'gradlew' | head -20
+          echo "... e mais."
+
+      - name: Dar Permissões e Configurar Gradle
         script: |
-          if [ -f gradlew ]; then
-            ./gradlew clean --stacktrace --info
-          else
-            gradle clean --stacktrace --info
-          fi
-      - name: Construir APK de Depuração
+          chmod +x ./gradlew
+          # Configuração para evitar problemas de memory lock no CI
+          echo "org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8" >> gradle.properties
+          echo "org.gradle.parallel=true" >> gradle.properties
+          echo "org.gradle.daemon=false" >> gradle.properties
+          echo "android.nonFinalResIds=false" >> gradle.properties # Suprime avisos para projetos não finalizados
+
+      - name: Build e Teste com Gradle Wrapper
         script: |
-          if [ -f gradlew ]; then
-            ./gradlew assembleDebug --stacktrace --info
-          else
-            gradle assembleDebug --stacktrace --info
-          fi
+          ./gradlew clean assembleDebug --stacktrace --no-daemon --warning-mode=all
+        timeout: 1800
+
     artifacts:
       - app/build/outputs/**/*.apk
+      - app/build/outputs/**/output.json
+      - app/build/reports/**/*
+
     publishing:
       email:
         recipients:
