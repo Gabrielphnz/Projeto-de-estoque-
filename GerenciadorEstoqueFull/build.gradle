@@ -1,0 +1,4 @@
+// Root build.gradle (simplified - using plugins DSL in module)
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}
