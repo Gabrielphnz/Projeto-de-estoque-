@@ -8,12 +8,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.AlertDialog
-import androidx.compose.material.Button
-import androidx.compose.material.Scaffold
-import androidx.compose.material.Text
-import androidx.compose.material.TextButton
-import androidx.compose.material.TopAppBar
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,16 +27,24 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 /**
- * AppScaffold compatível com Material 2 e com assinatura flexível.
- * - Usa androidx.compose.material.*
- * - Aceita qualquer quantidade de argumentos (vararg) para casar com chamadas existentes.
- * - Evita imports ambíguos e corrige o AlertDialog.
+ * Overload conveniente: permite chamar AppScaffold() sem passar ViewModel explicitamente.
  */
 @Composable
-fun AppScaffold(vararg unused: Any?) {
+fun AppScaffold() {
+    val vm: EstoqueViewModel = viewModel()
+    AppScaffold(viewModel = vm)
+}
+
+/**
+ * Assinatura que o seu MainActivity usa: AppScaffold(viewModel)
+ * Material 3 (androidx.compose.material3.*)
+ */
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun AppScaffold(viewModel: EstoqueViewModel) {
     var showAllProductsDialog by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableStateOf(0) }
 
@@ -49,9 +59,10 @@ fun AppScaffold(vararg unused: Any?) {
                         color = Color.White
                     )
                 },
-                backgroundColor = Color(0xFF6200EE),
-                contentColor = Color.White,
-                elevation = 4.dp
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFF6200EE),
+                    titleContentColor = Color.White
+                )
             )
         },
         content = { innerPadding: PaddingValues ->
