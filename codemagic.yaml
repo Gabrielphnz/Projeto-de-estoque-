@@ -3,7 +3,6 @@ workflows:
     name: Build Android App
     max_build_duration: 30
     environment:
-      android: latest
       java: 17
     scripts:
       - name: Navegar para diretório do projeto
