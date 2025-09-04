@@ -4,6 +4,8 @@ workflows:
     name: Build and Publish Android App
     # Tempo máximo de build em minutos (pode ajustar conforme necessário)
     max_build_duration: 60
+    # Define o tipo de instância (linux_s, mac_mini, windows) — linux_s atende para apps Android
+    instance_type: linux_s
     environment:
       # Versão do Java necessária para o projeto Gradle (ajuste se você usa outra versão)
       java: 17

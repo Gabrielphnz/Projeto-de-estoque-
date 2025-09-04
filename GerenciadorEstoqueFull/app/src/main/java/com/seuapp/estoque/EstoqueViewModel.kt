@@ -334,14 +334,26 @@ class EstoqueViewModel(application: Application) : AndroidViewModel(application)
      * automatically as necessary.  After import the data is persisted.
      */
     fun importProductsFromCsv(csvContent: String) {
-        val lines = csvContent.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }
+        /*
+         * Import products from a CSV string. Lines may be separated by either
+         * semicolons or commas. We trim whitespace on each line and ignore
+         * empty lines. A header row (where the first column is "codigo" or
+         * contains alphabetic characters) is skipped. Valid lines must
+         * provide at least three fields: codigo, descricao and setor. After
+         * import, new sectors are added automatically via upsertProduct and
+         * all data is persisted.
+         */
+        val lines = csvContent.lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
         lines.forEachIndexed { index, line ->
-            // Skip header if present (e.g. first row containing non‑numeric code)
             val parts = line.split(';', ',')
             if (parts.size >= 3) {
                 val codigo = parts[0].trim()
                 val descricao = parts[1].trim()
                 val setor = parts[2].trim()
+                // skip potential header rows on the first line (codigo or non‑numeric code)
+                if (index == 0 && codigo.equals("codigo", ignoreCase = true)) return@forEachIndexed
                 if (codigo.isNotBlank() && descricao.isNotBlank() && setor.isNotBlank()) {
                     upsertProduct(Product(codigo, descricao, setor))
                 }

@@ -20,11 +20,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenu
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -45,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 
 /**
@@ -94,7 +100,6 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
     var descricao by remember { mutableStateOf("") }
     var setor by remember { mutableStateOf("") }
     var mensagem by remember { mutableStateOf("") }
-    var expandSetor by remember { mutableStateOf(false) }
 
     // ActivityResult launcher for CSV import.  Accept both comma and
     // semicolon separated files with a text MIME type.
@@ -133,24 +138,31 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(8.dp))
-        // Selecção de setor via dropdown
-        Box {
+        // Selecção de setor via dropdown usando ExposedDropdownMenuBox para melhor acessibilidade
+        var setorExpanded by remember { mutableStateOf(false) }
+        ExposedDropdownMenuBox(
+            expanded = setorExpanded,
+            onExpandedChange = { setorExpanded = !setorExpanded }
+        ) {
             OutlinedTextField(
                 value = setor,
                 onValueChange = {},
                 label = { Text("Setor") },
+                readOnly = true,
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = setorExpanded) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { expandSetor = true },
-                readOnly = true
             )
-            DropdownMenu(expanded = expandSetor, onDismissRequest = { expandSetor = false }) {
+            ExposedDropdownMenu(
+                expanded = setorExpanded,
+                onDismissRequest = { setorExpanded = false }
+            ) {
                 viewModel.setores.forEach { s ->
                     DropdownMenuItem(
                         text = { Text(s) },
                         onClick = {
                             setor = s
-                            expandSetor = false
+                            setorExpanded = false
                         }
                     )
                 }
@@ -211,8 +223,15 @@ fun EstoqueScreen(viewModel: EstoqueViewModel) {
     var descricao by remember { mutableStateOf("") }
     var quantidadeText by remember { mutableStateOf("") }
     var mensagem by remember { mutableStateOf("") }
+    // When updating the form, calculate the current total for the code if it exists in inventory.
     val totalAtual: Float? = viewModel.estoque.firstOrNull { it.codigo == codigo }?.total
+    // Compute list of inventory items for the selected sector.
     val lista = viewModel.estoque.filter { it.setor == setorAtual }
+    // Compute list of products not yet counted in the selected sector.
+    val listaNaoContados = viewModel.produtos.filter { it.setor == setorAtual }
+        .filter { p -> viewModel.estoque.none { it.codigo == p.codigo } }
+    // Toggle to display non‑counted products instead of current inventory.
+    var showNotCounted by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.padding(16.dp)) {
         Text(text = "Gerenciamento de Estoque", fontWeight = FontWeight.Bold)
@@ -228,6 +247,13 @@ fun EstoqueScreen(viewModel: EstoqueViewModel) {
                     Text(s)
                 }
             }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        // Toggle to display products that have not been counted in this sector
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = showNotCounted, onCheckedChange = { showNotCounted = it })
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(text = "Mostrar produtos não contados")
         }
         Spacer(modifier = Modifier.height(12.dp))
         // Código field
@@ -286,37 +312,69 @@ fun EstoqueScreen(viewModel: EstoqueViewModel) {
             Text(text = mensagem, color = Color.Gray)
         }
         Spacer(modifier = Modifier.height(16.dp))
-        Text(text = "Itens em Estoque", fontWeight = FontWeight.Bold)
+        Text(text = if (showNotCounted) "Produtos não contados" else "Itens em Estoque", fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
-        if (lista.isEmpty()) {
+        if (!showNotCounted && lista.isEmpty()) {
             Text(text = "Nenhum item em estoque.")
+        } else if (showNotCounted && listaNaoContados.isEmpty()) {
+            Text(text = "Todos os produtos foram contados.")
         } else {
             LazyColumn {
-                items(lista) { item ->
-                    androidx.compose.material3.Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .clickable {
-                                // Populate form when clicked
-                                codigo = item.codigo
-                                descricao = item.descricao
-                            }
-                    ) {
-                        Row(
+                if (showNotCounted) {
+                    // Show list of products that have not yet been counted
+                    items(listaNaoContados) { product ->
+                        androidx.compose.material3.Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                                .padding(vertical = 4.dp)
+                                .clickable {
+                                    // Populate form when clicked and switch back to inventory mode
+                                    codigo = product.codigo
+                                    descricao = product.descricao
+                                    showNotCounted = false
+                                }
                         ) {
-                            Column {
-                                Text(text = item.codigo, fontWeight = FontWeight.Bold)
-                                Text(text = item.descricao, color = Color.DarkGray)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text(text = product.codigo, fontWeight = FontWeight.Bold)
+                                    Text(text = product.descricao, color = Color.DarkGray)
+                                }
                             }
-                            Text(
-                                text = String.format("%.1f", item.total),
-                                color = if (item.total < 0) Color.Red else Color.Black
-                            )
+                        }
+                    }
+                } else {
+                    // Show current inventory items
+                    items(lista) { item ->
+                        androidx.compose.material3.Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clickable {
+                                    // Populate form when clicked
+                                    codigo = item.codigo
+                                    descricao = item.descricao
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text(text = item.codigo, fontWeight = FontWeight.Bold)
+                                    Text(text = item.descricao, color = Color.DarkGray)
+                                }
+                                Text(
+                                    text = String.format("%.1f", item.total),
+                                    color = if (item.total < 0) Color.Red else Color.Black
+                                )
+                            }
                         }
                     }
                 }
@@ -443,15 +501,38 @@ fun RelatoriosScreen(viewModel: EstoqueViewModel) {
             }
         }
         Spacer(modifier = Modifier.height(12.dp))
-        // Header row
-        Row(modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)) {
-            Text(text = "Código", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
-            Text(text = "Descrição", modifier = Modifier.weight(2f), fontWeight = FontWeight.Bold)
+        // Table header with light grey background and bold text for readability
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFE0E0E0))
+                .padding(vertical = 6.dp, horizontal = 4.dp)
+        ) {
+            Text(
+                text = "Código",
+                modifier = Modifier.weight(1f),
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
+            )
+            Text(
+                text = "Descrição",
+                modifier = Modifier.weight(2f),
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
+            )
             if (!showProducts) {
-                Text(text = "Setor", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
-                Text(text = "Total", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                Text(
+                    text = "Setor",
+                    modifier = Modifier.weight(1f),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+                Text(
+                    text = "Total",
+                    modifier = Modifier.weight(1f),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
             }
         }
         Spacer(modifier = Modifier.height(4.dp))
@@ -461,26 +542,35 @@ fun RelatoriosScreen(viewModel: EstoqueViewModel) {
         } else {
             LazyColumn {
                 if (showProducts) {
-                    items(productsList) { item ->
-                        Row(modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)) {
-                            Text(text = item.codigo, modifier = Modifier.weight(1f))
-                            Text(text = item.descricao, modifier = Modifier.weight(2f))
+                    itemsIndexed(productsList) { index, item ->
+                        val backgroundColor = if (index % 2 == 0) Color(0xFFF7F7F7) else Color.White
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(backgroundColor)
+                                .padding(vertical = 6.dp, horizontal = 4.dp)
+                        ) {
+                            Text(text = item.codigo, modifier = Modifier.weight(1f), fontSize = 13.sp)
+                            Text(text = item.descricao, modifier = Modifier.weight(2f), fontSize = 13.sp)
                         }
                     }
                 } else {
-                    items(inventoryList) { item ->
-                        Row(modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)) {
-                            Text(text = item.codigo, modifier = Modifier.weight(1f))
-                            Text(text = item.descricao, modifier = Modifier.weight(2f))
-                            Text(text = item.setor, modifier = Modifier.weight(1f))
+                    itemsIndexed(inventoryList) { index, item ->
+                        val backgroundColor = if (index % 2 == 0) Color(0xFFF7F7F7) else Color.White
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(backgroundColor)
+                                .padding(vertical = 6.dp, horizontal = 4.dp)
+                        ) {
+                            Text(text = item.codigo, modifier = Modifier.weight(1f), fontSize = 13.sp)
+                            Text(text = item.descricao, modifier = Modifier.weight(2f), fontSize = 13.sp)
+                            Text(text = item.setor, modifier = Modifier.weight(1f), fontSize = 13.sp)
                             Text(
                                 text = String.format("%.1f", item.total),
                                 modifier = Modifier.weight(1f),
-                                color = if (item.total < 0) Color.Red else Color.Black
+                                color = if (item.total < 0) Color.Red else Color.Black,
+                                fontSize = 13.sp
                             )
                         }
                     }
