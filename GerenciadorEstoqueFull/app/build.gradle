@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace "com.seuprojeto.gerenciadorestoque"
+    namespace "com.seuapp.estoque"
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.seuprojeto.gerenciadorestoque"
+        applicationId "com.seuapp.estoque"
         minSdk 24
         targetSdk 34
         versionCode 1
