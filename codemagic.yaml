@@ -5,12 +5,18 @@ workflows:
     environment:
       java: 17
     scripts:
-      - name: Listar conteúdo do diretório
-        script: ls -la
+      - name: Clonar repositório manualmente
+        script: |
+          rm -rf /Users/builder/clone/*
+          git clone --no-checkout https://github.com/Gabrielphnz/Projeto-de-estoque-.git .
+          git checkout main
+          ls -la
+      - name: Definir permissões do Gradle Wrapper
+        script: chmod +x gradlew
       - name: Limpar projeto
-        script: ./gradlew clean
+        script: ./gradlew clean --stacktrace --info
       - name: Construir APK de Depuração
-        script: ./gradlew assembleDebug
+        script: ./gradlew assembleDebug --stacktrace --info
     artifacts:
       - app/build/outputs/**/*.apk
     publishing:
