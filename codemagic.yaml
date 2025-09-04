@@ -4,7 +4,7 @@ workflows:
     name: Build and Publish Android App
     # Tempo máximo de build em minutos (pode ajustar conforme necessário)
     max_build_duration: 60
-       environment:
+   environment:
       # Versão do Java necessária para o projeto Gradle (ajuste se você usa outra versão)
       java: 17
       # Caso utilize variáveis ou certificados, defina grupos secretos aqui
