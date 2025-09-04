@@ -3,37 +3,58 @@ workflows:
     name: Build Android App
     max_build_duration: 30
     environment:
+      android: latest
       java: 17
     scripts:
-      - name: 🔍 DEBUG - Verificar estrutura do repositório
+      - name: Navegar para diretório do projeto
         script: |
-          echo "=========================================="
-          echo "DEBUG: ESTRUTURA COMPLETA DO REPOSITÓRIO"
-          echo "=========================================="
           echo "Diretório atual: $PWD"
-          echo "------------------------------------------"
-          echo "LISTANDO TODOS OS ARQUIVOS E PASTAS:"
+          cd GerenciadorEstoqueFull
+          echo "Navegando para: $PWD"
+          echo "Verificando arquivos do projeto:"
+          ls -la *.gradle
+          
+      - name: Verificar estrutura do projeto Android
+        script: |
+          echo "Estrutura do projeto Android:"
           ls -la
-          echo "------------------------------------------"
-          echo "PROCURANDO POR ARQUIVOS GRADLE:"
-          find . -name "*.gradle" -type f 2>/dev/null || echo "Nenhum arquivo .gradle encontrado"
-          echo "------------------------------------------"
-          echo "PROCURANDO POR ARQUIVOS KOTLIN:"
-          find . -name "*.kt" -type f | head -5
-          echo "------------------------------------------"
-          echo "PROCURANDO POR PASTA APP:"
-          find . -name "app" -type d
-          echo "=========================================="
+          echo "Pasta app:"
+          ls -la app/
+          
+      - name: Corrigir nome do settings.gradle se necessário
+        script: |
+          if [ -f "Settings.gradle" ] && [ ! -f "settings.gradle" ]; then
+            echo "Corrigindo Settings.gradle → settings.gradle"
+            mv Settings.gradle settings.gradle
+          fi
           
       - name: Definir permissões do Gradle Wrapper
         script: |
-          chmod +x gradlew
+          if [ -f "gradlew" ]; then
+            chmod +x gradlew
+            echo "✅ gradlew tornando executável"
+          else
+            echo "⚠️  gradlew não encontrado, usando gradle do sistema"
+          fi
+          
       - name: Limpar projeto
-        script: ./gradlew clean --stacktrace --info
+        script: |
+          if [ -f "gradlew" ]; then
+            ./gradlew clean --stacktrace --info
+          else
+            gradle clean --stacktrace --info
+          fi
+          
       - name: Construir APK de Depuração
-        script: ./gradlew assembleDebug --stacktrace --info
+        script: |
+          if [ -f "gradlew" ]; then
+            ./gradlew assembleDebug --stacktrace --info
+          else
+            gradle assembleDebug --stacktrace --info
+          fi
+          
     artifacts:
-      - app/build/outputs/**/*.apk
+      - GerenciadorEstoqueFull/app/build/outputs/**/*.apk
     publishing:
       email:
         recipients:
