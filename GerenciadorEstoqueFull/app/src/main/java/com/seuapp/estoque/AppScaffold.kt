@@ -41,18 +41,24 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardActions
+import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Card
 
 /**
  * Top level scaffold for the stock manager application.  Presents four
@@ -101,6 +107,18 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
     var descricao by remember { mutableStateOf("") }
     var setor by remember { mutableStateOf("") }
     var mensagem by remember { mutableStateOf("") }
+    // Search term used to filter the products list on-the-fly
+    var searchTerm by remember { mutableStateOf("") }
+    // Multi-select state: holds the codes of currently selected products
+    val selectedCodes = remember { mutableStateListOf<String>() }
+    // Track selected sector for batch reassignment
+    var batchSector by remember { mutableStateOf("") }
+    var showBatchAssignDialog by remember { mutableStateOf(false) }
+
+    // Dropdown state for selecting a sector in the product form.  Defined at
+    // this scope so that keyboard actions can modify it before the dropdown
+    // component is declared.
+    var setorExpanded by remember { mutableStateOf(false) }
 
     // ActivityResult launcher for CSV import.  Accept both comma and
     // semicolon separated files with a text MIME type.
@@ -137,14 +155,36 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
     }
 
     Column(modifier = Modifier.padding(16.dp)) {
-        Text(text = "Cadastro de Produtos", fontWeight = FontWeight.Bold)
+        // Title
+        Text(text = "Cadastro de Produtos", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Search bar to filter products by code or description
+        OutlinedTextField(
+            value = searchTerm,
+            onValueChange = { searchTerm = it },
+            label = { Text("Pesquisar produto") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { /* nothing */ })
+        )
         Spacer(modifier = Modifier.height(12.dp))
         // Código do Produto
+        // Define focus requesters to support moving focus between fields via IME actions
+        val descricaoFocusRequester = remember { FocusRequester() }
+
         OutlinedTextField(
             value = codigo,
             onValueChange = { codigo = it },
             label = { Text("Código") },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth(),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
+            keyboardActions = KeyboardActions(
+                onNext = { descricaoFocusRequester.requestFocus() }
+            )
         )
         Spacer(modifier = Modifier.height(8.dp))
         // Descrição
@@ -152,12 +192,20 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
             value = descricao,
             onValueChange = { descricao = it },
             label = { Text("Descrição") },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(descricaoFocusRequester),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
+            keyboardActions = KeyboardActions(
+                onNext = {
+                    // When pressing next on description, open sector picker
+                    setorExpanded = true
+                }
+            )
         )
         Spacer(modifier = Modifier.height(8.dp))
-        // Seleção de setor via um botão que abre um menu suspenso.  Isso evita
-        // depender de APIs experimentais e torna mais claro para o usuário
-        var setorExpanded by remember { mutableStateOf(false) }
+        // Seleção de setor via um botão que abre um menu suspenso.
         Box {
             Button(
                 onClick = { setorExpanded = true },
@@ -222,6 +270,28 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
             Text("Importar CSV")
         }
 
+        // Batch actions: if there are selected products, provide options to delete or move them
+        if (selectedCodes.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Button(onClick = {
+                    // Delete all selected products
+                    selectedCodes.forEach { code -> viewModel.deleteProduct(code) }
+                    selectedCodes.clear()
+                }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) {
+                    Text("Excluir selecionados")
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(onClick = {
+                    // Show dialog to assign selected products to a sector
+                    showBatchAssignDialog = true
+                    batchSector = ""
+                }) {
+                    Text("Mover setor")
+                }
+            }
+        }
+
         // If products were imported without a sector, prompt the user to assign a sector
         if (showAssignSectorDialog) {
             AlertDialog(
@@ -276,6 +346,116 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
                 }
             )
         }
+
+        // Dialog for batch assigning selected products to a sector
+        if (showBatchAssignDialog) {
+            AlertDialog(
+                onDismissRequest = { showBatchAssignDialog = false },
+                title = { Text("Reatribuir setor") },
+                text = {
+                    Column {
+                        Text("Escolha o setor para os produtos selecionados:")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        var expandBatchAssign by remember { mutableStateOf(false) }
+                        Box {
+                            Button(
+                                onClick = { expandBatchAssign = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(text = if (batchSector.isNotBlank()) batchSector else "Selecione o setor")
+                            }
+                            DropdownMenu(
+                                expanded = expandBatchAssign,
+                                onDismissRequest = { expandBatchAssign = false },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                viewModel.setores.forEach { s ->
+                                    DropdownMenuItem(
+                                        text = { Text(s) },
+                                        onClick = {
+                                            batchSector = s
+                                            expandBatchAssign = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (batchSector.isNotBlank()) {
+                            viewModel.assignSectorToProducts(selectedCodes.toList(), batchSector)
+                            selectedCodes.clear()
+                            showBatchAssignDialog = false
+                        }
+                    }) { Text("Salvar") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showBatchAssignDialog = false }) { Text("Cancelar") }
+                }
+            )
+        }
+
+        // Section listing existing products with search and multi-select
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(text = "Produtos Cadastrados", fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+        val filteredProducts = viewModel.produtos.filter { p ->
+            p.codigo.contains(searchTerm, ignoreCase = true) ||
+                p.descricao.contains(searchTerm, ignoreCase = true)
+        }
+        if (filteredProducts.isEmpty()) {
+            Text("Nenhum produto encontrado.")
+        } else {
+            LazyColumn {
+                items(filteredProducts) { product ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Checkbox for multi-select
+                            val isChecked = selectedCodes.contains(product.codigo)
+                            Checkbox(
+                                checked = isChecked,
+                                onCheckedChange = { checked ->
+                                    if (checked) {
+                                        if (!selectedCodes.contains(product.codigo)) {
+                                            selectedCodes.add(product.codigo)
+                                        }
+                                    } else {
+                                        selectedCodes.remove(product.codigo)
+                                    }
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        // Clicking product fills the form for editing
+                                        codigo = product.codigo
+                                        descricao = product.descricao
+                                        setor = product.setor
+                                        mensagem = ""
+                                    }
+                            ) {
+                                Text(product.codigo, fontWeight = FontWeight.Bold)
+                                Text(product.descricao, color = Color.DarkGray)
+                                Text(product.setor, color = Color.Gray, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -302,7 +482,10 @@ fun EstoqueScreen(viewModel: EstoqueViewModel) {
     var showNaoContadosDialog by remember { mutableStateOf(false) }
 
     // FocusRequester for directing focus to the quantity field after selecting a product
-    val quantityFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    val quantityFocusRequester = remember { FocusRequester() }
+    // Additional focus requesters for code and description fields to support IME navigation
+    val codeFocusRequester = remember { FocusRequester() }
+    val descFocusRequester = remember { FocusRequester() }
 
     Column(modifier = Modifier.padding(16.dp)) {
         Text(text = "Gerenciamento de Estoque", fontWeight = FontWeight.Bold)
@@ -381,7 +564,14 @@ fun EstoqueScreen(viewModel: EstoqueViewModel) {
             value = codigo,
             onValueChange = { codigo = it },
             label = { Text("Código") },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(codeFocusRequester),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
+            keyboardActions = KeyboardActions(onNext = {
+                descFocusRequester.requestFocus()
+            })
         )
         Spacer(modifier = Modifier.height(8.dp))
         // Descrição field
@@ -389,7 +579,14 @@ fun EstoqueScreen(viewModel: EstoqueViewModel) {
             value = descricao,
             onValueChange = { descricao = it },
             label = { Text("Descrição") },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(descFocusRequester),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
+            keyboardActions = KeyboardActions(onNext = {
+                quantityFocusRequester.requestFocus()
+            })
         )
         Spacer(modifier = Modifier.height(8.dp))
         // Quantidade field (focusable after selecting um produto não contado)
@@ -399,7 +596,26 @@ fun EstoqueScreen(viewModel: EstoqueViewModel) {
             label = { Text("Quantidade a Adicionar/Subtrair") },
             modifier = Modifier
                 .fillMaxWidth()
-                .focusRequester(quantityFocusRequester)
+                .focusRequester(quantityFocusRequester),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = {
+                // Trigger save logic on done action
+                if (codigo.isBlank() || quantidadeText.isBlank()) {
+                    mensagem = "Código e quantidade são obrigatórios"
+                } else {
+                    val qty = quantidadeText.replace(",", ".").toFloatOrNull()
+                    if (qty == null) {
+                        mensagem = "Quantidade inválida"
+                    } else {
+                        viewModel.updateInventory(codigo, descricao, setorAtual, qty)
+                        mensagem = "Estoque atualizado"
+                        codigo = ""
+                        descricao = ""
+                        quantidadeText = ""
+                    }
+                }
+            })
         )
         Spacer(modifier = Modifier.height(8.dp))
         // Total atual (read only)
@@ -422,7 +638,10 @@ fun EstoqueScreen(viewModel: EstoqueViewModel) {
                     mensagem = "Quantidade inválida"
                 } else {
                     viewModel.updateInventory(codigo, descricao, setorAtual, qty)
+                    // Clear the form fields after updating to make the workflow obvious for users
                     mensagem = "Estoque atualizado"
+                    codigo = ""
+                    descricao = ""
                     quantidadeText = ""
                 }
             }

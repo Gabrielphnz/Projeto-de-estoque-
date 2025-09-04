@@ -404,6 +404,28 @@ class EstoqueViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
+     * Assign a new sector to a list of products identified by their codes.  If
+     * the sector name is blank nothing happens.  Products whose codes do
+     * not exist in the current list are ignored.  If the sector does not
+     * exist in the sectors list, it will be added.  All changes are
+     * persisted.
+     */
+    fun assignSectorToProducts(codes: List<String>, sector: String) {
+        val cleaned = sector.trim()
+        if (cleaned.isBlank()) return
+        codes.forEach { code ->
+            val idx = produtos.indexOfFirst { it.codigo == code }
+            if (idx >= 0) {
+                produtos[idx].setor = cleaned
+            }
+        }
+        if (setores.none { it.equals(cleaned, ignoreCase = true) }) {
+            setores.add(cleaned)
+        }
+        persistData()
+    }
+
+    /**
      * Generate a CSV string representing the current inventory for a
      * specific sector.  The header row is included.  Quantities are
      * formatted with one decimal place.
