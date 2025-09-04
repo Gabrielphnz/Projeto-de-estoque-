@@ -74,6 +74,25 @@ class EstoqueViewModel(application: Application) : AndroidViewModel(application)
     val setores = mutableStateListOf<String>()
 
     /**
+     * Represents an application user.  Each user has a username and
+     * password along with a set of permissions controlling access to various
+     * app features.  The [isAdmin] flag grants full access including user
+     * management.
+     */
+    data class User(
+        val username: String,
+        val password: String,
+        var canEditProducts: Boolean = true,
+        var canEditInventory: Boolean = true,
+        var canViewReports: Boolean = true,
+        var canManageUsers: Boolean = false,
+        var isAdmin: Boolean = false
+    )
+
+    val users = mutableStateListOf<User>()
+    var currentUser: User? = null
+
+    /**
      * Holds products imported from CSV that did not specify a sector.  After
      * importing, the UI can prompt the user to assign these products to a
      * chosen sector.  This list is not persisted to disk and exists only
@@ -86,6 +105,10 @@ class EstoqueViewModel(application: Application) : AndroidViewModel(application)
         // If no sectors were loaded, initialise with three default ones
         if (setores.isEmpty()) {
             setores.addAll(listOf("Açougue", "Hortifruti", "Outros"))
+        }
+        // Ensure at least one admin user exists
+        if (users.isEmpty()) {
+            users.add(User("admin", "admin", isAdmin = true, canManageUsers = true))
         }
     }
 
@@ -127,6 +150,14 @@ class EstoqueViewModel(application: Application) : AndroidViewModel(application)
                 // ignore corrupt sectors data
             }
         }
+        // Load users list
+        prefs.getString("users", null)?.let { json ->
+            try {
+                users.addAll(decodeUsers(json))
+            } catch (_: Exception) {
+                // ignore corrupt users data
+            }
+        }
     }
 
     /**
@@ -139,6 +170,7 @@ class EstoqueViewModel(application: Application) : AndroidViewModel(application)
             putString("inventory", encodeInventory(estoque))
             putString("history", encodeHistory(historico))
             putString("sectors", encodeSectors(setores))
+            putString("users", encodeUsers(users))
             apply()
         }
     }
@@ -252,6 +284,87 @@ class EstoqueViewModel(application: Application) : AndroidViewModel(application)
         return items
     }
 
+    // Encode users list into JSON
+    private fun encodeUsers(list: List<User>): String {
+        val arr = JSONArray()
+        list.forEach { u ->
+            val obj = JSONObject()
+            obj.put("username", u.username)
+            obj.put("password", u.password)
+            obj.put("canEditProducts", u.canEditProducts)
+            obj.put("canEditInventory", u.canEditInventory)
+            obj.put("canViewReports", u.canViewReports)
+            obj.put("canManageUsers", u.canManageUsers)
+            obj.put("isAdmin", u.isAdmin)
+            arr.put(obj)
+        }
+        return arr.toString()
+    }
+
+    // Decode users list from JSON
+    private fun decodeUsers(json: String): List<User> {
+        val arr = JSONArray(json)
+        val items = mutableListOf<User>()
+        for (i in 0 until arr.length()) {
+            val obj = arr.getJSONObject(i)
+            val username = obj.optString("username", "")
+            val password = obj.optString("password", "")
+            val canEditProducts = obj.optBoolean("canEditProducts", true)
+            val canEditInventory = obj.optBoolean("canEditInventory", true)
+            val canViewReports = obj.optBoolean("canViewReports", true)
+            val canManageUsers = obj.optBoolean("canManageUsers", false)
+            val isAdmin = obj.optBoolean("isAdmin", false)
+            if (username.isNotBlank()) {
+                items.add(User(username, password, canEditProducts, canEditInventory, canViewReports, canManageUsers, isAdmin))
+            }
+        }
+        return items
+    }
+
+    /**
+     * Authenticate a user by username and password.  Returns true if
+     * credentials match a stored user.  On success sets [currentUser] to
+     * the authenticated user.  Fails silently if no match is found.
+     */
+    fun authenticate(username: String, password: String): Boolean {
+        val user = users.firstOrNull { it.username.equals(username, ignoreCase = true) && it.password == password }
+        return if (user != null) {
+            currentUser = user
+            true
+        } else {
+            false
+        }
+    }
+
+    /** Add a new user.  Duplicate usernames are ignored. */
+    fun addUser(user: User) {
+        if (users.any { it.username.equals(user.username, ignoreCase = true) }) return
+        users.add(user)
+        persistData()
+    }
+
+    /** Update permissions for an existing user. */
+    fun updateUserPermissions(username: String, canEditProducts: Boolean, canEditInventory: Boolean, canViewReports: Boolean, canManageUsers: Boolean) {
+        val idx = users.indexOfFirst { it.username.equals(username, ignoreCase = true) }
+        if (idx >= 0) {
+            val u = users[idx]
+            users[idx] = u.copy(
+                canEditProducts = canEditProducts,
+                canEditInventory = canEditInventory,
+                canViewReports = canViewReports,
+                canManageUsers = canManageUsers
+            )
+            persistData()
+        }
+    }
+
+    /** Delete a user by username.  The admin user cannot be deleted. */
+    fun deleteUser(username: String) {
+        if (username.equals("admin", ignoreCase = true)) return
+        users.removeAll { it.username.equals(username, ignoreCase = true) }
+        persistData()
+    }
+
     /**
      * Add a new product or update an existing one.  Products are uniquely
      * identified by their [Product.codigo].  When updating, only the
@@ -359,9 +472,14 @@ class EstoqueViewModel(application: Application) : AndroidViewModel(application)
         lines.forEachIndexed { index, line ->
             val parts = line.split(';', ',')
             if (parts.size >= 2) {
-                val codigo = parts[0].trim()
-                val descricao = parts[1].trim()
-                val setor: String = if (parts.size >= 3) parts[2].trim() else ""
+                // Trim whitespace and surrounding quotes from each field
+                val rawCodigo = parts[0].trim()
+                val rawDescricao = parts[1].trim()
+                val rawSetor: String? = if (parts.size >= 3) parts[2].trim() else null
+                // Remove double quotes around fields if present
+                val codigo = rawCodigo.trim('"')
+                val descricao = rawDescricao.trim('"')
+                val setor: String = rawSetor?.trim('"') ?: ""
                 // skip potential header rows on the first line (codigo or non‑numeric code)
                 if (index == 0 && codigo.equals("codigo", ignoreCase = true)) return@forEachIndexed
                 if (codigo.isNotBlank() && descricao.isNotBlank()) {

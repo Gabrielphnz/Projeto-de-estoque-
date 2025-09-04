@@ -60,6 +60,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
+// Import Product type for suggestions list
+import com.seuapp.estoque.Product
 
 /**
  * Top level scaffold for the stock manager application.  Presents four
@@ -70,8 +72,20 @@ import androidx.compose.material3.Card
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppScaffold(viewModel: EstoqueViewModel) {
+    /*
+     * Determine which tabs to display based on the current user's permissions.
+     * By default we always show the product, inventory, reports and general
+     * management tabs.  An additional "Usuários" tab is shown for
+     * administrators or users with the canManageUsers permission.  This
+     * dynamic list drives both the TabRow and the body content below.
+     */
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("Cadastro de Produtos", "Estoque", "Relatórios", "Gerenciar Estoque")
+    val baseTabs = mutableListOf("Cadastro de Produtos", "Estoque", "Relatórios", "Gerenciar Estoque")
+    val current = viewModel.currentUser
+    val showUsersTab = current?.canManageUsers == true || current?.isAdmin == true
+    if (showUsersTab) {
+        baseTabs.add("Usuários")
+    }
     Scaffold(
         topBar = {
             TopAppBar(title = { Text("Gerenciador de Estoque") })
@@ -79,7 +93,7 @@ fun AppScaffold(viewModel: EstoqueViewModel) {
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding)) {
             TabRow(selectedTabIndex = selectedTab) {
-                tabs.forEachIndexed { index, title ->
+                baseTabs.forEachIndexed { index, title ->
                     Tab(
                         selected = selectedTab == index,
                         onClick = { selectedTab = index },
@@ -92,6 +106,8 @@ fun AppScaffold(viewModel: EstoqueViewModel) {
                 1 -> EstoqueScreen(viewModel)
                 2 -> RelatoriosScreen(viewModel)
                 3 -> GerenciarScreen(viewModel)
+                // If users tab is enabled, it will be the last index
+                4 -> UsuariosScreen(viewModel)
             }
         }
     }
@@ -115,6 +131,9 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
     // Track selected sector for batch reassignment
     var batchSector by remember { mutableStateOf("") }
     var showBatchAssignDialog by remember { mutableStateOf(false) }
+
+    // Show a full-screen dialog listing all products for easier management.
+    var showAllProductsDialog by remember { mutableStateOf(false) }
 
     // Dropdown state for selecting a sector in the product form.  Defined at
     // this scope so that keyboard actions can modify it before the dropdown
@@ -156,6 +175,27 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
     }
 
     Column(modifier = Modifier.padding(16.dp)) {
+        // If the current user does not have permission to edit products, show an informative message and return
+        val canEditProducts = viewModel.currentUser?.canEditProducts ?: true
+        if (!canEditProducts) {
+            Text("Você não tem permissão para editar produtos.", color = Color.Red)
+            Spacer(modifier = Modifier.height(8.dp))
+            // Still show the list of products for reference
+            Text(text = "Produtos Cadastrados", fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+            LazyColumn {
+                items(viewModel.produtos) { product ->
+                    Row(modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)) {
+                        Text(product.codigo, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text(product.descricao, modifier = Modifier.weight(2f))
+                        Text(product.setor, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+            return
+        }
         // Title
         Text(text = "Cadastro de Produtos", fontWeight = FontWeight.Bold, fontSize = 18.sp)
         Spacer(modifier = Modifier.height(12.dp))
@@ -269,6 +309,12 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
             importLauncher.launch(arrayOf("text/*", "text/csv", "text/plain"))
         }) {
             Text("Importar CSV")
+        }
+
+        // Button to open full list dialog for easier browsing and batch actions
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = { showAllProductsDialog = true }) {
+            Text("Ver todos os produtos")
         }
 
         // Batch actions: if there are selected products, provide options to delete or move them
@@ -406,20 +452,21 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
             p.codigo.contains(searchTerm, ignoreCase = true) ||
                 p.descricao.contains(searchTerm, ignoreCase = true)
         }
+        // Provide a larger scrollable area using weight so that the list can grow
         if (filteredProducts.isEmpty()) {
             Text("Nenhum produto encontrado.")
         } else {
-            LazyColumn {
+            LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
                 items(filteredProducts) { product ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 4.dp)
+                            .padding(vertical = 2.dp)
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(8.dp),
+                                .padding(horizontal = 4.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             // Checkbox for multi-select
@@ -437,26 +484,101 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
                                 }
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Column(
+                            // Row with code, description and sector side by side
+                            Row(
                                 modifier = Modifier
                                     .weight(1f)
                                     .clickable {
-                                        // Clicking product fills the form for editing
                                         codigo = product.codigo
                                         descricao = product.descricao
                                         setor = product.setor
                                         mensagem = ""
-                                    }
+                                    },
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text(product.codigo, fontWeight = FontWeight.Bold)
-                                Text(product.descricao, color = Color.DarkGray)
-                                Text(product.setor, color = Color.Gray, fontSize = 12.sp)
+                                Text(product.codigo, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                Text(product.descricao, color = Color.DarkGray, modifier = Modifier.weight(2f))
+                                Text(product.setor, color = Color.Gray, fontSize = 12.sp, modifier = Modifier.weight(1f))
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+    // Full screen dialog listing all products for bulk management
+    if (showAllProductsDialog) {
+        AlertDialog(
+            onDismissRequest = { showAllProductsDialog = false },
+            title = { Text("Lista completa de produtos") },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Scrollable list of all products (filtered by searchTerm)
+                    val allProducts = if (searchTerm.isBlank()) viewModel.produtos else filteredProducts
+                    LazyColumn {
+                        items(allProducts) { product ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .clickable {
+                                        codigo = product.codigo
+                                        descricao = product.descricao
+                                        setor = product.setor
+                                        showAllProductsDialog = false
+                                        mensagem = ""
+                                    },
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val checked = selectedCodes.contains(product.codigo)
+                                Checkbox(
+                                    checked = checked,
+                                    onCheckedChange = { isChecked ->
+                                        if (isChecked) {
+                                            if (!selectedCodes.contains(product.codigo)) selectedCodes.add(product.codigo)
+                                        } else {
+                                            selectedCodes.remove(product.codigo)
+                                        }
+                                    }
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(product.codigo, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                Text(product.descricao, modifier = Modifier.weight(2f))
+                                Text(product.setor, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                // Actions appear only when at least one product is selected
+                Column {
+                    if (selectedCodes.isNotEmpty()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Button(onClick = {
+                                // Delete selected
+                                selectedCodes.forEach { code -> viewModel.deleteProduct(code) }
+                                selectedCodes.clear()
+                                showAllProductsDialog = false
+                            }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) {
+                                Text("Excluir selecionados")
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(onClick = {
+                                showBatchAssignDialog = true
+                                showAllProductsDialog = false
+                            }) {
+                                Text("Mover setor")
+                            }
+                        }
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAllProductsDialog = false }) { Text("Fechar") }
+            }
+        )
     }
 }
 
@@ -482,13 +604,112 @@ fun EstoqueScreen(viewModel: EstoqueViewModel) {
     // Dialog toggle for selecting products not yet counted
     var showNaoContadosDialog by remember { mutableStateOf(false) }
 
+    // Suggestion dialog state when searching by code or description.  When
+    // the user presses enter on a code or description that does not match
+    // exactly one product, this dialog appears with a list of possible
+    // matches for the user to choose from.
+    var showSuggestionsDialog by remember { mutableStateOf(false) }
+    val suggestionResults = remember { mutableStateListOf<Product>() }
+
     // FocusRequester for directing focus to the quantity field after selecting a product
     val quantityFocusRequester = remember { FocusRequester() }
     // Additional focus requesters for code and description fields to support IME navigation
     val codeFocusRequester = remember { FocusRequester() }
     val descFocusRequester = remember { FocusRequester() }
 
+    // Helper functions to handle searching when the user presses enter on the
+    // code or description fields.  They update the description/code fields
+    // if an exact match is found, otherwise populate the suggestion list.
+    fun handleCodeEntered() {
+        val text = codigo.trim()
+        if (text.isNotEmpty()) {
+            // Try exact match by code
+            val exact = viewModel.produtos.firstOrNull { it.codigo.equals(text, ignoreCase = true) }
+            if (exact != null) {
+                descricao = exact.descricao
+                // focus on quantity field
+                quantityFocusRequester.requestFocus()
+                return
+            }
+            // Try exact match by description
+            val matches = viewModel.produtos.filter { it.codigo.contains(text, ignoreCase = true) || it.descricao.contains(text, ignoreCase = true) }
+            if (matches.size == 1) {
+                codigo = matches[0].codigo
+                descricao = matches[0].descricao
+                quantityFocusRequester.requestFocus()
+                return
+            }
+            if (matches.isNotEmpty()) {
+                suggestionResults.clear()
+                suggestionResults.addAll(matches)
+                showSuggestionsDialog = true
+            } else {
+                mensagem = "Produto não encontrado"
+            }
+        }
+    }
+    fun handleDescriptionEntered() {
+        val text = descricao.trim()
+        if (text.isNotEmpty()) {
+            // Try exact match by description
+            val exact = viewModel.produtos.firstOrNull { it.descricao.equals(text, ignoreCase = true) }
+            if (exact != null) {
+                codigo = exact.codigo
+                descricao = exact.descricao
+                quantityFocusRequester.requestFocus()
+                return
+            }
+            val matches = viewModel.produtos.filter { it.descricao.contains(text, ignoreCase = true) || it.codigo.contains(text, ignoreCase = true) }
+            if (matches.size == 1) {
+                codigo = matches[0].codigo
+                descricao = matches[0].descricao
+                quantityFocusRequester.requestFocus()
+                return
+            }
+            if (matches.isNotEmpty()) {
+                suggestionResults.clear()
+                suggestionResults.addAll(matches)
+                showSuggestionsDialog = true
+            } else {
+                mensagem = "Produto não encontrado"
+            }
+        }
+    }
+
     Column(modifier = Modifier.padding(16.dp)) {
+        // If user cannot edit inventory, show read-only message and return
+        val canEditInventory = viewModel.currentUser?.canEditInventory ?: true
+        if (!canEditInventory) {
+            Text("Você não tem permissão para editar o estoque.", color = Color.Red)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Itens em Estoque", fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+            val listAll = viewModel.estoque.filter { it.setor == setorAtual }
+            if (listAll.isEmpty()) {
+                Text("Nenhum item em estoque.")
+            } else {
+                LazyColumn {
+                    items(listAll) { item ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text(item.codigo, fontWeight = FontWeight.Bold)
+                                Text(item.descricao, color = Color.DarkGray)
+                            }
+                            Text(
+                                text = String.format("%.1f", item.total),
+                                color = if (item.total < 0) Color.Red else Color.Black
+                            )
+                        }
+                    }
+                }
+            }
+            return
+        }
         Text(text = "Gerenciamento de Estoque", fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
         // Sector buttons
@@ -552,6 +773,55 @@ fun EstoqueScreen(viewModel: EstoqueViewModel) {
                 }
             )
         }
+
+        // Suggestion dialog for approximate searches.  When multiple products
+        // match the entered code or description, this list allows the user
+        // to choose the correct product.  Selecting an item fills the code
+        // and description fields and focuses the quantity input.
+        if (showSuggestionsDialog) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showSuggestionsDialog = false },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showSuggestionsDialog = false }) { Text("Fechar") }
+                },
+                title = { Text("Selecione o produto") },
+                text = {
+                    if (suggestionResults.isEmpty()) {
+                        Text("Nenhum produto encontrado.")
+                    } else {
+                        LazyColumn {
+                            items(suggestionResults) { product ->
+                                androidx.compose.material3.Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                        .clickable {
+                                            codigo = product.codigo
+                                            descricao = product.descricao
+                                            showSuggestionsDialog = false
+                                            // move focus to quantity field
+                                            quantityFocusRequester.requestFocus()
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column {
+                                            Text(product.codigo, fontWeight = FontWeight.Bold)
+                                            Text(product.descricao, color = Color.DarkGray)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            )
+        }
         Spacer(modifier = Modifier.height(12.dp))
         // Botão para abrir a lista de produtos não contados no setor atual
         Button(onClick = {
@@ -571,6 +841,8 @@ fun EstoqueScreen(viewModel: EstoqueViewModel) {
             singleLine = true,
             keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
             keyboardActions = KeyboardActions(onNext = {
+                // When pressing next, attempt to auto fill using the code
+                handleCodeEntered()
                 descFocusRequester.requestFocus()
             })
         )
@@ -586,6 +858,8 @@ fun EstoqueScreen(viewModel: EstoqueViewModel) {
             singleLine = true,
             keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
             keyboardActions = KeyboardActions(onNext = {
+                // When pressing next, attempt to auto fill using the description
+                handleDescriptionEntered()
                 quantityFocusRequester.requestFocus()
             })
         )
@@ -783,9 +1057,15 @@ fun RelatoriosScreen(viewModel: EstoqueViewModel) {
     }
 
     Column(modifier = Modifier.padding(16.dp)) {
+        // Restrict access if user lacks permission
+        val canViewReports = viewModel.currentUser?.canViewReports ?: true
+        if (!canViewReports) {
+            Text("Você não tem permissão para visualizar relatórios.", color = Color.Red)
+            return
+        }
         Text(text = "Relatórios", fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
-        // Actions row
+        // Actions row: export buttons on the first row
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { csvLauncher.launch("relatorio.csv") }) {
                 Text("Exportar CSV")
@@ -793,9 +1073,11 @@ fun RelatoriosScreen(viewModel: EstoqueViewModel) {
             Button(onClick = { pdfLauncher.launch("relatorio.pdf") }) {
                 Text("Exportar PDF")
             }
-            Button(onClick = { showProducts = !showProducts }) {
-                Text(if (showProducts) "Relatório de estoque" else "Relatório de produtos cadastrados")
-            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        // Toggle button placed below in a full width rectangular style
+        Button(onClick = { showProducts = !showProducts }, modifier = Modifier.fillMaxWidth()) {
+            Text(if (showProducts) "Relatório de estoque" else "Relatório de produtos cadastrados")
         }
         Spacer(modifier = Modifier.height(12.dp))
         // Sector filters
@@ -905,45 +1187,51 @@ fun GerenciarScreen(viewModel: EstoqueViewModel) {
     var sectorToDelete by remember { mutableStateOf<String?>(null) }
 
     Column(modifier = Modifier.padding(16.dp)) {
-        Text(text = "Gerenciar Estoque", fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "Use as ferramentas abaixo para gerenciar seu estoque de forma geral. Cuidado, estas ações não podem ser desfeitas.")
-        Spacer(modifier = Modifier.height(16.dp))
-        // Danger actions
-        Button(
-            onClick = { showClearInventoryDialog = true },
-            colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
-        ) {
-            Text("Apagar todos os itens do estoque")
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(
-            onClick = { showClearProductsDialog = true },
-            colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
-        ) {
-            Text("Apagar todos itens cadastrados")
-        }
-        Spacer(modifier = Modifier.height(24.dp))
-        Text(text = "Gerenciar Setores", fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
-        // List of sectors with edit/delete buttons
-        viewModel.setores.forEach { setorName ->
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
-                Text(setorName, modifier = Modifier.weight(1f))
-                Button(onClick = {
-                    sectorToEdit = setorName
-                    editSectorName = setorName
-                }, modifier = Modifier.padding(horizontal = 2.dp)) {
-                    Text("Editar")
-                }
-                Button(onClick = { sectorToDelete = setorName }, modifier = Modifier.padding(horizontal = 2.dp)) {
-                    Text("Excluir")
+        val user = viewModel.currentUser
+        val allowed = user?.isAdmin == true || user?.canManageUsers == true
+        if (!allowed) {
+            Text("Você não tem permissão para acessar esta área.", color = Color.Red)
+        } else {
+            Text(text = "Gerenciar Estoque", fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(text = "Use as ferramentas abaixo para gerenciar seu estoque de forma geral. Cuidado, estas ações não podem ser desfeitas.")
+            Spacer(modifier = Modifier.height(16.dp))
+            // Danger actions
+            Button(
+                onClick = { showClearInventoryDialog = true },
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+            ) {
+                Text("Apagar todos os itens do estoque")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = { showClearProductsDialog = true },
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+            ) {
+                Text("Apagar todos itens cadastrados")
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(text = "Gerenciar Setores", fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+            // List of sectors with edit/delete buttons
+            viewModel.setores.forEach { setorName ->
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
+                    Text(setorName, modifier = Modifier.weight(1f))
+                    Button(onClick = {
+                        sectorToEdit = setorName
+                        editSectorName = setorName
+                    }, modifier = Modifier.padding(horizontal = 2.dp)) {
+                        Text("Editar")
+                    }
+                    Button(onClick = { sectorToDelete = setorName }, modifier = Modifier.padding(horizontal = 2.dp)) {
+                        Text("Excluir")
+                    }
                 }
             }
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(onClick = { showAddDialog = true }) {
-            Text("Adicionar Setor")
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(onClick = { showAddDialog = true }) {
+                Text("Adicionar Setor")
+            }
         }
     }
 
@@ -1050,5 +1338,291 @@ fun GerenciarScreen(viewModel: EstoqueViewModel) {
                 TextButton(onClick = { sectorToDelete = null }) { Text("Cancelar") }
             }
         )
+    }
+}
+
+/**
+ * Screen for managing application users and their permissions.  Visible only
+ * to administrators or users with the canManageUsers permission.  Allows
+ * adding new users with a username, password and a set of permissions, as
+ * well as editing or deleting existing users.  The admin user cannot be
+ * deleted nor can its permissions be modified.
+ */
+@Composable
+fun UsuariosScreen(viewModel: EstoqueViewModel) {
+    var newUsername by remember { mutableStateOf("") }
+    var newPassword by remember { mutableStateOf("") }
+    var newCanEditProducts by remember { mutableStateOf(true) }
+    var newCanEditInventory by remember { mutableStateOf(true) }
+    var newCanViewReports by remember { mutableStateOf(true) }
+    var newCanManageUsers by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf("") }
+
+    Column(modifier = Modifier.padding(16.dp)) {
+        Text("Gerenciar Usuários", fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("Adicione novos usuários e atribua permissões. O usuário 'admin' possui acesso total e não pode ser removido.")
+        Spacer(modifier = Modifier.height(12.dp))
+        // New user form
+        OutlinedTextField(
+            value = newUsername,
+            onValueChange = { newUsername = it },
+            label = { Text("Nome de usuário") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = newPassword,
+            onValueChange = { newPassword = it },
+            label = { Text("Senha") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        // Permissions checkboxes
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = newCanEditProducts, onCheckedChange = { newCanEditProducts = it })
+            Text("Pode editar produtos", modifier = Modifier.weight(1f))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = newCanEditInventory, onCheckedChange = { newCanEditInventory = it })
+            Text("Pode editar estoque", modifier = Modifier.weight(1f))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = newCanViewReports, onCheckedChange = { newCanViewReports = it })
+            Text("Pode ver relatórios", modifier = Modifier.weight(1f))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = newCanManageUsers, onCheckedChange = { newCanManageUsers = it })
+            Text("Pode gerenciar usuários", modifier = Modifier.weight(1f))
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = {
+            if (newUsername.isBlank() || newPassword.isBlank()) {
+                message = "Usuário e senha são obrigatórios"
+            } else {
+                // Only add if username not taken
+                if (viewModel.users.any { it.username.equals(newUsername, ignoreCase = true) }) {
+                    message = "Usuário já existe"
+                } else {
+                    viewModel.addUser(
+                        EstoqueViewModel.User(
+                            username = newUsername,
+                            password = newPassword,
+                            canEditProducts = newCanEditProducts,
+                            canEditInventory = newCanEditInventory,
+                            canViewReports = newCanViewReports,
+                            canManageUsers = newCanManageUsers,
+                            isAdmin = false
+                        )
+                    )
+                    newUsername = ""
+                    newPassword = ""
+                    newCanEditProducts = true
+                    newCanEditInventory = true
+                    newCanViewReports = true
+                    newCanManageUsers = false
+                    message = "Usuário cadastrado"
+                }
+            }
+        }) {
+            Text("Adicionar Usuário")
+        }
+        if (message.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(message, color = Color.Gray)
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("Usuários Cadastrados", fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+        // List existing users
+        LazyColumn {
+            items(viewModel.users) { user ->
+                // Row for each user with permission checkboxes and delete button
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                ) {
+                    Column(modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(user.username, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            // Delete button for non-admin users
+                            if (!user.isAdmin) {
+                                Button(onClick = { viewModel.deleteUser(user.username) }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) {
+                                    Text("Excluir")
+                                }
+                            } else {
+                                Text("(Administrador)", color = Color.Gray)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        // Only allow editing permissions for non-admin users
+                        if (!user.isAdmin) {
+                            var editProd by remember { mutableStateOf(user.canEditProducts) }
+                            var editInv by remember { mutableStateOf(user.canEditInventory) }
+                            var viewRep by remember { mutableStateOf(user.canViewReports) }
+                            var manage by remember { mutableStateOf(user.canManageUsers) }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = editProd, onCheckedChange = { checked ->
+                                    editProd = checked
+                                    viewModel.updateUserPermissions(user.username, editProd, editInv, viewRep, manage)
+                                })
+                                Text("Editar Produtos", modifier = Modifier.weight(1f))
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = editInv, onCheckedChange = { checked ->
+                                    editInv = checked
+                                    viewModel.updateUserPermissions(user.username, editProd, editInv, viewRep, manage)
+                                })
+                                Text("Editar Estoque", modifier = Modifier.weight(1f))
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = viewRep, onCheckedChange = { checked ->
+                                    viewRep = checked
+                                    viewModel.updateUserPermissions(user.username, editProd, editInv, viewRep, manage)
+                                })
+                                Text("Ver Relatórios", modifier = Modifier.weight(1f))
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = manage, onCheckedChange = { checked ->
+                                    manage = checked
+                                    viewModel.updateUserPermissions(user.username, editProd, editInv, viewRep, manage)
+                                })
+                                Text("Gerenciar Usuários", modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * User management screen.  Only available to admin users.  Allows adding
+ * new users and editing permissions for existing users.  The admin user
+ * cannot be deleted.
+ */
+@Composable
+fun UsuariosScreen(viewModel: EstoqueViewModel) {
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var canEditProducts by remember { mutableStateOf(true) }
+    var canEditInventory by remember { mutableStateOf(true) }
+    var canViewReports by remember { mutableStateOf(true) }
+    var canManageUsers by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf("") }
+
+    Column(modifier = Modifier.padding(16.dp)) {
+        Text(text = "Cadastro de Usuários", fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = username,
+            onValueChange = { username = it },
+            label = { Text("Nome de usuário") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Senha") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = canEditProducts, onCheckedChange = { canEditProducts = it })
+            Text("Pode editar produtos")
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = canEditInventory, onCheckedChange = { canEditInventory = it })
+            Text("Pode editar estoque")
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = canViewReports, onCheckedChange = { canViewReports = it })
+            Text("Pode ver relatórios")
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = canManageUsers, onCheckedChange = { canManageUsers = it })
+            Text("Pode gerenciar usuários")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = {
+            if (username.isBlank() || password.isBlank()) {
+                message = "Nome de usuário e senha são obrigatórios"
+            } else {
+                viewModel.addUser(EstoqueViewModel.User(username, password, canEditProducts, canEditInventory, canViewReports, canManageUsers, isAdmin = false))
+                message = "Usuário adicionado"
+                username = ""
+                password = ""
+                canEditProducts = true
+                canEditInventory = true
+                canViewReports = true
+                canManageUsers = false
+            }
+        }) {
+            Text("Adicionar Usuário")
+        }
+        if (message.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(message, color = Color.Gray)
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(text = "Usuários Cadastrados", fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(4.dp))
+        LazyColumn {
+            items(viewModel.users) { user ->
+                if (!user.isAdmin) {
+                    Card(modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(user.username, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                Button(onClick = { viewModel.deleteUser(user.username) }, colors = ButtonDefaults.buttonColors(containerColor = Color.LightGray)) {
+                                    Text("Excluir")
+                                }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = user.canEditProducts, onCheckedChange = {
+                                    viewModel.updateUserPermissions(user.username, it, user.canEditInventory, user.canViewReports, user.canManageUsers)
+                                })
+                                Text("Produtos")
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Checkbox(checked = user.canEditInventory, onCheckedChange = {
+                                    viewModel.updateUserPermissions(user.username, user.canEditProducts, it, user.canViewReports, user.canManageUsers)
+                                })
+                                Text("Estoque")
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Checkbox(checked = user.canViewReports, onCheckedChange = {
+                                    viewModel.updateUserPermissions(user.username, user.canEditProducts, user.canEditInventory, it, user.canManageUsers)
+                                })
+                                Text("Relatórios")
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Checkbox(checked = user.canManageUsers, onCheckedChange = {
+                                    viewModel.updateUserPermissions(user.username, user.canEditProducts, user.canEditInventory, user.canViewReports, it)
+                                })
+                                Text("Usuários")
+                            }
+                        }
+                    }
+                } else {
+                    Card(modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)) {
+                        Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(user.username + " (admin)", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
