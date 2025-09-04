@@ -1,0 +1,26 @@
+
+// === PATCH: EstoqueViewModel – upsert de produto por código ===
+// Cole estes métodos dentro da classe EstoqueViewModel
+
+fun hasProduct(code: String): Boolean {
+    return produtos.any { it.codigo.equals(code.trim(), ignoreCase = true) }
+}
+
+/**
+ * Insere ou substitui o produto com o mesmo código (upsert).
+ * Retorna true se houve substituição (produto já existia).
+ */
+fun addOrReplaceProduct(produto: Produto): Boolean {
+    val code = produto.codigo.trim()
+    val idx = produtos.indexOfFirst { it.codigo.equals(code, ignoreCase = true) }
+    return if (idx >= 0) {
+        // Mantém o mesmo código; atualiza demais campos (ex.: descrição, setor)
+        produtos[idx] = produto.copy(codigo = produtos[idx].codigo.trim())
+        salvarProdutosLocalmente()
+        true
+    } else {
+        produtos.add(produto.copy(codigo = code))
+        salvarProdutosLocalmente()
+        false
+    }
+}

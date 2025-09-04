@@ -1,0 +1,50 @@
+
+// === PATCH: AppScaffold – confirmação ao salvar produto duplicado ===
+// Dentro de @Composable fun CadastroProdutosScreen(viewModel: EstoqueViewModel) { ... }
+// 1) Adicione estes estados no início do composable:
+var pendingProduto by remember { mutableStateOf<Produto?>(null) }
+var showReplaceDialog by remember { mutableStateOf(false) }
+
+// 2) No clique do botão Salvar/Adicionar, use esta lógica:
+val novo = Produto(
+    codigo = codigoInput.trim(),
+    descricao = descricaoInput.trim(),
+    setor = setorSelecionado.trim()
+    // ... outros campos, se houver
+)
+
+if (viewModel.hasProduct(novo.codigo)) {
+    pendingProduto = novo
+    showReplaceDialog = true
+} else {
+    viewModel.addOrReplaceProduct(novo)
+    // TODO: mostrar snackbar/toast de sucesso e limpar campos, se desejar
+}
+
+// 3) Em qualquer lugar dentro do mesmo composable, adicione o diálogo:
+if (showReplaceDialog && pendingProduto != null) {
+    AlertDialog(
+        onDismissRequest = {
+            showReplaceDialog = false
+            pendingProduto = null
+        },
+        title = { Text("Código já cadastrado") },
+        text = {
+            Text("Já existe um produto com o código \"${pendingProduto!!.codigo}\". Deseja substituir a descrição/setor pelo novo cadastro?")
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                viewModel.addOrReplaceProduct(pendingProduto!!)
+                showReplaceDialog = false
+                pendingProduto = null
+                // TODO: mostrar snackbar/toast "Produto substituído." e limpar campos, se desejar
+            }) { Text("Substituir") }
+        },
+        dismissButton = {
+            TextButton(onClick = {
+                showReplaceDialog = false
+                pendingProduto = null
+            }) { Text("Cancelar") }
+        }
+    )
+}
