@@ -63,6 +63,7 @@ import androidx.compose.material3.Card
 // Import Product type for suggestions list
 import com.seuapp.estoque.Product
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 
 /**
  * Top level scaffold for the stock manager application.  Presents four
