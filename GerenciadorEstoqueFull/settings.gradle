@@ -1,5 +1,3 @@
-
-
 pluginManagement {
     repositories {
         google()
@@ -15,5 +13,6 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
+
 rootProject.name = "GerenciadorEstoque"
 include(":app")
