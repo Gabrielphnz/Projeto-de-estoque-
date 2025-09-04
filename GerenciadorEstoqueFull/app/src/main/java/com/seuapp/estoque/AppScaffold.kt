@@ -25,9 +25,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.PaddingValues
 
+/**
+ * AppScaffold compatível com Material 2 e com assinatura flexível.
+ * - Usa androidx.compose.material.*
+ * - Aceita qualquer quantidade de argumentos (vararg) para casar com chamadas existentes.
+ * - Evita imports ambíguos e corrige o AlertDialog.
+ */
 @Composable
-fun AppScaffold() {
+fun AppScaffold(vararg unused: Any?) {
     var showAllProductsDialog by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableStateOf(0) }
 
@@ -46,29 +53,33 @@ fun AppScaffold() {
                 contentColor = Color.White,
                 elevation = 4.dp
             )
-        }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.Top,
-            horizontalAlignment = Alignment.Start
-        ) {
-            Text(
-                text = "Bem-vindo",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Medium
-            )
-            Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = { selectedTab = 0 }) { Text("Estoque") }
-                Button(onClick = { selectedTab = 1 }) { Text("Cadastro") }
-                Button(onClick = { showAllProductsDialog = true }) { Text("Ver todos") }
+        },
+        content = { innerPadding: PaddingValues ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.Top,
+                horizontalAlignment = Alignment.Start
+            ) {
+                Text(
+                    text = "Bem-vindo",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Button(onClick = { selectedTab = 0 }) { Text("Estoque") }
+                    Button(onClick = { selectedTab = 1 }) { Text("Cadastro") }
+                    Button(onClick = { showAllProductsDialog = true }) { Text("Ver todos") }
+                }
             }
         }
-    }
+    )
 
     if (showAllProductsDialog) {
         AlertDialog(
