@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.seuapp.estoque">
-    <application android:label="Gerenciador de Estoque" android:icon="@mipmap/ic_launcher">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.seuapp.estoque">
+
+    <application
+        android:allowBackup="true"
+        android:label="Gerenciador de Estoque"
+        android:theme="@style/Theme.Material3.DayNight.NoActionBar">
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -10,4 +15,5 @@
             </intent-filter>
         </activity>
     </application>
+
 </manifest>
