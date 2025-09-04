@@ -171,6 +171,9 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
                         selectedAssignSector = ""
                     }
                     mensagem = "CSV importado com sucesso"
+                    // After importing products, open the full list dialog so
+                    // that the user can immediately see the new items.
+                    showAllProductsDialog = true
                 }
             } catch (e: Exception) {
                 mensagem = "Erro ao importar CSV"
@@ -182,22 +185,10 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
         // If the current user does not have permission to edit products, show an informative message and return
         val canEditProducts = viewModel.currentUser?.canEditProducts ?: true
         if (!canEditProducts) {
+            // Show only the permission message.  The list of products is
+            // available via the "Ver todos os produtos" dialog, so the
+            // inline list has been removed for a cleaner interface.
             Text("Você não tem permissão para editar produtos.", color = Color.Red)
-            Spacer(modifier = Modifier.height(8.dp))
-            // Still show the list of products for reference
-            Text(text = "Produtos Cadastrados", fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(8.dp))
-            LazyColumn {
-                items(viewModel.produtos) { product ->
-                    Row(modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)) {
-                        Text(product.codigo, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                        Text(product.descricao, modifier = Modifier.weight(2f))
-                        Text(product.setor, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    }
-                }
-            }
             return
         }
         // Title
@@ -439,67 +430,9 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
             )
         }
 
-        // Section listing existing products with search and multi-select
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(text = "Produtos Cadastrados", fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
-        // Always show the full list of products in the main view.  Use the
-        // search field inside the full list dialog to filter items.
-        val filteredProducts = viewModel.produtos
-        // Provide a larger scrollable area using weight so that the list can grow
-        if (filteredProducts.isEmpty()) {
-            Text("Nenhum produto encontrado.")
-        } else {
-            LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
-                items(filteredProducts) { product ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 2.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .horizontalScroll(rememberScrollState())
-                                .fillMaxWidth()
-                                .padding(horizontal = 4.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Checkbox for multi-select
-                            val isChecked = selectedCodes.contains(product.codigo)
-                            Checkbox(
-                                checked = isChecked,
-                                onCheckedChange = { checked ->
-                                    if (checked) {
-                                        if (!selectedCodes.contains(product.codigo)) {
-                                            selectedCodes.add(product.codigo)
-                                        }
-                                    } else {
-                                        selectedCodes.remove(product.codigo)
-                                    }
-                                }
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            // Row with code, description and sector side by side
-                            Row(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable {
-                                        codigo = product.codigo
-                                        descricao = product.descricao
-                                        setor = product.setor
-                                        mensagem = ""
-                                    },
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(product.codigo, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                                Text(product.descricao, color = Color.DarkGray, modifier = Modifier.weight(2f))
-                                Text(product.setor, color = Color.Gray, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        // Removed the inline list of products from the main screen.  Use
+        // "Ver todos os produtos" to browse, search, select and perform
+        // batch operations.
     }
 
         // Full screen dialog listing all products for bulk management.  A search
@@ -949,7 +882,13 @@ fun EstoqueScreen(viewModel: EstoqueViewModel) {
         if (lista.isEmpty()) {
             Text(text = "Nenhum item em estoque.")
         } else {
-            LazyColumn {
+            // Give the inventory list more vertical space by assigning a weight
+            // so that it fills available space and allows scrolling.
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
                 items(lista) { item ->
                     androidx.compose.material3.Card(
                         modifier = Modifier
@@ -1109,38 +1048,46 @@ fun RelatoriosScreen(viewModel: EstoqueViewModel) {
             }
         }
         Spacer(modifier = Modifier.height(12.dp))
-        // Table header with light grey background and bold text for readability
+        // Define fixed widths for each column to prevent header text from wrapping.
+        val codeWidth = 80.dp
+        val descWidth = 200.dp
+        val sectorWidth = 120.dp
+        val totalWidth = 80.dp
+        // Header row uses horizontal scroll and fixed cell widths.
         Row(
             modifier = Modifier
                 .horizontalScroll(rememberScrollState())
-                .fillMaxWidth()
                 .background(Color(0xFFE0E0E0))
                 .padding(vertical = 6.dp, horizontal = 4.dp)
         ) {
             Text(
                 text = "Código",
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.width(codeWidth),
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
+                fontSize = 14.sp,
+                maxLines = 1
             )
             Text(
                 text = "Descrição",
-                modifier = Modifier.weight(2f),
+                modifier = Modifier.width(descWidth),
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
+                fontSize = 14.sp,
+                maxLines = 1
             )
             if (!showProducts) {
                 Text(
                     text = "Setor",
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.width(sectorWidth),
                     fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
+                    fontSize = 14.sp,
+                    maxLines = 1
                 )
                 Text(
                     text = "Total",
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.width(totalWidth),
                     fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
+                    fontSize = 14.sp,
+                    maxLines = 1
                 )
             }
         }
@@ -1156,12 +1103,11 @@ fun RelatoriosScreen(viewModel: EstoqueViewModel) {
                         Row(
                             modifier = Modifier
                                 .horizontalScroll(rememberScrollState())
-                                .fillMaxWidth()
                                 .background(backgroundColor)
                                 .padding(vertical = 6.dp, horizontal = 4.dp)
                         ) {
-                            Text(text = item.codigo, modifier = Modifier.weight(1f), fontSize = 13.sp)
-                            Text(text = item.descricao, modifier = Modifier.weight(2f), fontSize = 13.sp)
+                            Text(text = item.codigo, modifier = Modifier.width(codeWidth), fontSize = 13.sp)
+                            Text(text = item.descricao, modifier = Modifier.width(descWidth), fontSize = 13.sp)
                         }
                     }
                 } else {
@@ -1170,16 +1116,15 @@ fun RelatoriosScreen(viewModel: EstoqueViewModel) {
                         Row(
                             modifier = Modifier
                                 .horizontalScroll(rememberScrollState())
-                                .fillMaxWidth()
                                 .background(backgroundColor)
                                 .padding(vertical = 6.dp, horizontal = 4.dp)
                         ) {
-                            Text(text = item.codigo, modifier = Modifier.weight(1f), fontSize = 13.sp)
-                            Text(text = item.descricao, modifier = Modifier.weight(2f), fontSize = 13.sp)
-                            Text(text = item.setor, modifier = Modifier.weight(1f), fontSize = 13.sp)
+                            Text(text = item.codigo, modifier = Modifier.width(codeWidth), fontSize = 13.sp)
+                            Text(text = item.descricao, modifier = Modifier.width(descWidth), fontSize = 13.sp)
+                            Text(text = item.setor, modifier = Modifier.width(sectorWidth), fontSize = 13.sp)
                             Text(
                                 text = String.format("%.1f", item.total),
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.width(totalWidth),
                                 color = if (item.total < 0) Color.Red else Color.Black,
                                 fontSize = 13.sp
                             )
