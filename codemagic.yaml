@@ -2,35 +2,45 @@ workflows:
   android-app:
     # Nome do workflow a ser exibido no Codemagic
     name: Build and Publish Android App
-    # Tempo máximo de build em minutos
+
+    # Tempo máximo de build em minutos (ajuste conforme necessário)
     max_build_duration: 60
-    # Tipo de instância. Para apps Android, o Linux básico é suficiente
     environment:
-      # Versão do Java usada pelo Gradle
+      # Versão do Java utilizada pelo Gradle
       java: 17
-      # Se precisar de credenciais (por exemplo, keystore), defina grupos secretos aqui
+      # Se precisar de variáveis secretas (por exemplo, keystore), defina grupos aqui:
       # groups:
       #   - keystore_credentials
-    # Scripts executados na pipeline
+
+    # Scripts executados durante o build
     scripts:
-      # Limpa o projeto
+      # Limpa o projeto (remove diretórios gerados por builds anteriores)
       - name: Clean project
-        script: cd GerenciadorEstoqueFull && ./gradlew clean
-      # Compila APK de debug
+        # Usamos `gradle` porque o wrapper `gradlew` não está no repositório
+        script: cd GerenciadorEstoqueFull && gradle clean
+
+      # Gera APK de debug (útil para testes internos)
       - name: Assemble Debug APK
-        script: cd GerenciadorEstoqueFull && ./gradlew assembleDebug
-      # Compila APK de release (ajuste a assinatura no build.gradle se necessário)
+        script: cd GerenciadorEstoqueFull && gradle assembleDebug
+
+      # Gera APK de release (caso precise assinar o APK, configure no build.gradle)
       - name: Assemble Release APK
-        script: cd GerenciadorEstoqueFull && ./gradlew assembleRelease
-    # Artefatos salvos após o build – esses são os APKs
+        script: cd GerenciadorEstoqueFull && gradle assembleRelease
+
+    # Artefatos que serão salvos após o build – esses são os APKs gerados
     artifacts:
+      # APK de debug
       - GerenciadorEstoqueFull/app/build/outputs/apk/debug/app-debug.apk
+      # APK de release
       - GerenciadorEstoqueFull/app/build/outputs/apk/release/app-release.apk
-    # Publicação (envio) dos artefatos
+
+    # Envio/publicação dos artefatos após a conclusão do workflow
     publishing:
       email:
         recipients:
+          # Seu e‑mail para receber os APKs
           - gabrielphnz@gmail.com
-      # Pode adicionar outros canais (Slack, webhook etc.) se desejar
+      # Outros canais de publicação podem ser adicionados conforme necessário
+      # Por exemplo:
       # slack:
       #   url: $SLACK_WEBHOOK_URL
