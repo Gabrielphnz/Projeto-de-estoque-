@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.seuapp.estoque
 
 import androidx.compose.foundation.layout.Arrangement
@@ -30,7 +32,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 /**
- * Overload conveniente: permite chamar AppScaffold() sem passar ViewModel explicitamente.
+ * Overload: permite chamar AppScaffold() sem passar o ViewModel.
  */
 @Composable
 fun AppScaffold() {
@@ -39,8 +41,7 @@ fun AppScaffold() {
 }
 
 /**
- * Assinatura que o seu MainActivity usa: AppScaffold(viewModel)
- * Material 3 (androidx.compose.material3.*)
+ * Assinatura usada no seu MainActivity: AppScaffold(viewModel)
  */
 @Composable
 @Suppress("UNUSED_PARAMETER")
