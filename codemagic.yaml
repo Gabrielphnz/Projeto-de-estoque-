@@ -1,47 +1,50 @@
 workflows:
-  android-compose-app:
-    name: Build Android Compose App
-    max_build_duration: 60
+  android-app:
+    name: Build Android App
+    max_build_duration: 180
     environment:
-      groups:
-        - android_credentials # Opcional, para assinar o APK
       java: 17
-      node: 20 # Útil para outros scripts, mesmo em Android
+      vars:
+        GRADLE_VERSION: "8.14.1"
+        GITHUB_REPO_URL: "https://$GITHUB_TOKEN@github.com/Gabrielphnz/Projeto-de-estoque-.git"
     scripts:
-      - name: Configurar Ambiente Android
+      - name: Verificar e clonar repositório manualmente
         script: |
-          echo "Configurando SDKMAN! e Java..."
-          sudo apt-get update
-          sudo apt-get install --yes unzip zip
-          sdkmanager "cmake;3.22.1" # Pode ser necessário para algumas dependências nativas
-
-      - name: Listar Estrutura do Projeto
+          echo "Diretório inicial: $PWD"
+          ls -la
+          rm -rf .
+          git clone --branch main $GITHUB_REPO_URL .
+          echo "Diretório após clonagem: $PWD"
+          ls -la
+      - name: Definir permissões do Gradle Wrapper (fallback)
         script: |
-          echo "Diretório de trabalho: $PWD"
-          echo "Estrutura do projeto:"
-          find . -name '*.gradle' -o -name '*.kt' -o -name '*.xml' -o -name '*.yaml' -o -name 'gradlew' | head -20
-          echo "... e mais."
-
-      - name: Dar Permissões e Configurar Gradle
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+          else
+            echo "Gradle Wrapper não encontrado. Instalando Gradle global."
+            wget https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip
+            unzip gradle-$GRADLE_VERSION-bin.zip
+            export PATH=$PATH:$PWD/gradle-$GRADLE_VERSION/bin
+            gradle --version
+          fi
+      - name: Limpar projeto
         script: |
-          chmod +x ./gradlew
-          # Configuração para evitar problemas de memory lock no CI
-          echo "org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8" >> gradle.properties
-          echo "org.gradle.parallel=true" >> gradle.properties
-          echo "org.gradle.daemon=false" >> gradle.properties
-          echo "android.nonFinalResIds=false" >> gradle.properties # Suprime avisos para projetos não finalizados
-
-      - name: Build e Teste com Gradle Wrapper
+          if [ -f gradlew ]; then
+            ./gradlew clean --stacktrace --info
+          else
+            gradle clean --stacktrace --info
+          fi
+      - name: Construir APK de Depuração
         script: |
-          ./gradlew clean assembleDebug --stacktrace --no-daemon --warning-mode=all
-        timeout: 1800
-
+          if [ -f gradlew ]; then
+            ./gradlew assembleDebug --stacktrace --info
+          else
+            gradle assembleDebug --stacktrace --info
+          fi
     artifacts:
       - app/build/outputs/**/*.apk
-      - app/build/outputs/**/output.json
-      - app/build/reports/**/*
-
     publishing:
       email:
         recipients:
           - seu-email@exemplo.com
+          
