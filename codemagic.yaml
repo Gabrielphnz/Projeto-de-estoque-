@@ -1,58 +1,26 @@
 workflows:
   android-app:
     name: Build Android App
-    max_build_duration: 30
+    max_build_duration: 60
     environment:
+      instance_type: linux_x2
       java: 17
     scripts:
-      - name: Navegar e verificar estrutura do projeto
-        script: |
-          echo "Diretório atual: $PWD"
-          cd GerenciadorEstoqueFull
-          echo "Navegando para: $PWD"
-          echo "Estrutura do projeto Android:"
-          ls -la
-          echo "Pasta app:"
-          ls -la app/
-          
-      - name: Corrigir nome do settings.gradle se necessário
-        script: |
-          cd GerenciadorEstoqueFull
-          if [ -f "Settings.gradle" ] && [ ! -f "settings.gradle" ]; then
-            echo "Corrigindo Settings.gradle → settings.gradle"
-            mv Settings.gradle settings.gradle
-          fi
-          
-      - name: Definir permissões do Gradle Wrapper
-        script: |
-          cd GerenciadorEstoqueFull
-          if [ -f "gradlew" ]; then
-            chmod +x gradlew
-            echo "✅ gradlew tornando executável"
-          else
-            echo "⚠️  gradlew não encontrado, usando gradle do sistema"
-          fi
-          
-      - name: Limpar projeto
-        script: |
-          cd GerenciadorEstoqueFull
-          if [ -f "gradlew" ]; then
-            ./gradlew clean --stacktrace --info
-          else
-            gradle clean --stacktrace --info
-          fi
-          
-      - name: Construir APK de Depuração
-        script: |
-          cd GerenciadorEstoqueFull
-          if [ -f "gradlew" ]; then
-            ./gradlew assembleDebug --stacktrace --info
-          else
-            gradle assembleDebug --stacktrace --info
-          fi
-          
+      - name: Go to project folder
+        script: cd GerenciadorEstoqueFull
+
+      - name: Clean project
+        script: cd GerenciadorEstoqueFull && gradle clean
+
+      - name: Assemble Debug APK
+        script: cd GerenciadorEstoqueFull && gradle assembleDebug
+
+      - name: Assemble Release APK
+        script: cd GerenciadorEstoqueFull && gradle assembleRelease
+
     artifacts:
       - GerenciadorEstoqueFull/app/build/outputs/**/*.apk
+
     publishing:
       email:
         recipients:
