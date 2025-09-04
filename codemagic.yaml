@@ -4,43 +4,69 @@ workflows:
     max_build_duration: 30
     environment:
       java: 17
-      vars:
-        GRADLE_VERSION: "8.14.1"
-        GITHUB_REPO_URL: "https://$GITHUB_TOKEN@github.com/Gabrielphnz/Projeto-de-estoque-.git"
     scripts:
-      - name: Verificar e clonar repositório manualmente
+      - name: Verificar e navegar para estrutura correta
         script: |
-          echo "Diretório inicial: $PWD"
+          echo "Diretório atual: $PWD"
+          echo "Conteúdo do diretório:"
           ls -la
-          rm -rf .
-          git clone --branch main $GITHUB_REPO_URL .
-          echo "Diretório após clonagem: $PWD"
-          ls -la
-      - name: Definir permissões do Gradle Wrapper (fallback)
-        script: |
-          if [ -f gradlew ]; then
-            chmod +x gradlew
+          
+          # Verificar se estamos no diretório correto
+          if [ -f "Settings.gradle" ] || [ -f "build.gradle" ]; then
+            echo "✅ Arquivos do projeto encontrados no diretório atual"
           else
-            echo "Gradle Wrapper não encontrado. Instalando Gradle global."
-            wget https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip
-            unzip gradle-$GRADLE_VERSION-bin.zip
-            export PATH=$PATH:$PWD/gradle-$GRADLE_VERSION/bin
-            gradle --version
+            echo "❌ Arquivos do projeto NÃO encontrados. Procurando em subdiretórios..."
+            find . -name "*.gradle" -type f | head -10
+            echo "Tentando localizar o diretório do projeto..."
+            
+            # Procurar por arquivos Gradle em subdiretórios
+            PROJECT_DIR=$(find . -name "Settings.gradle" -o -name "settings.gradle" -o -name "build.gradle" | head -1 | xargs dirname 2>/dev/null || echo ".")
+            
+            if [ "$PROJECT_DIR" != "." ]; then
+              echo "Navegando para o diretório do projeto: $PROJECT_DIR"
+              cd "$PROJECT_DIR"
+              echo "Novo diretório: $PWD"
+              echo "Conteúdo:"
+              ls -la
+            else
+              echo "ERRO: Não foi possível encontrar arquivos do projeto Gradle"
+              exit 1
+            fi
           fi
+          
+      - name: Verificar arquivos específicos
+        script: |
+          echo "Verificando arquivos essenciais:"
+          [ -f "Settings.gradle" ] && echo "✅ Settings.gradle encontrado" || echo "❌ Settings.gradle NÃO encontrado"
+          [ -f "build.gradle" ] && echo "✅ build.gradle encontrado" || echo "❌ build.gradle NÃO encontrado"
+          [ -f "app/build.gradle" ] && echo "✅ app/build.gradle encontrado" || echo "❌ app/build.gradle NÃO encontrado"
+          [ -d "app/src" ] && echo "✅ app/src encontrado" || echo "❌ app/src NÃO encontrado"
+          
+      - name: Definir permissões do Gradle Wrapper
+        script: |
+          if [ -f "gradlew" ]; then
+            chmod +x gradlew
+            echo "✅ gradlew tornando executável"
+          else
+            echo "⚠️  gradlew não encontrado, usando gradle do sistema"
+          fi
+          
       - name: Limpar projeto
         script: |
-          if [ -f gradlew ]; then
+          if [ -f "gradlew" ]; then
             ./gradlew clean --stacktrace --info
           else
             gradle clean --stacktrace --info
           fi
+          
       - name: Construir APK de Depuração
         script: |
-          if [ -f gradlew ]; then
+          if [ -f "gradlew" ]; then
             ./gradlew assembleDebug --stacktrace --info
           else
             gradle assembleDebug --stacktrace --info
           fi
+          
     artifacts:
       - app/build/outputs/**/*.apk
     publishing:
