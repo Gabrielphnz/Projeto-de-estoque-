@@ -26,11 +26,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExposedDropdownMenuBox
 // Removed ExposedDropdownMenu import because this API may not be available
 // in the current Compose version. We use DropdownMenu inside
 // ExposedDropdownMenuBox instead.  No separate icon imports are needed.
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -53,6 +51,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 
 /**
  * Top level scaffold for the stock manager application.  Presents four
@@ -109,6 +109,14 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
     ) { uri: Uri? ->
         if (uri != null) {
             try {
+                // Attempt to persist read permission so that the file can be read
+                // immediately.  Some document providers require this.
+                try {
+                    val flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    context.contentResolver.takePersistableUriPermission(uri, flags)
+                } catch (_: Exception) {
+                    // silently ignore if we cannot persist the permission
+                }
                 context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
                     val content = reader.readText()
                     viewModel.importProductsFromCsv(content)
@@ -139,30 +147,20 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(8.dp))
-        // Selecção de setor via dropdown usando ExposedDropdownMenuBox para melhor acessibilidade
+        // Seleção de setor via um botão que abre um menu suspenso.  Isso evita
+        // depender de APIs experimentais e torna mais claro para o usuário
         var setorExpanded by remember { mutableStateOf(false) }
-        // Use ExposedDropdownMenuBox paired with a DropdownMenu.  We avoid
-        // ExposedDropdownMenu because it may not be available in the current
-        // Compose version.  The TextField is read-only and clicking the
-        // trailing arrow toggles the menu visibility.
-        ExposedDropdownMenuBox(
-            expanded = setorExpanded,
-            onExpandedChange = { setorExpanded = !setorExpanded }
-        ) {
-            OutlinedTextField(
-                value = setor,
-                onValueChange = {},
-                label = { Text("Setor") },
-                readOnly = true,
-                // No explicit trailing icon; ExposedDropdownMenuBox provides the
-                // appropriate affordance automatically when paired with
-                // DropdownMenu.
-                modifier = Modifier
-                    .fillMaxWidth()
-            )
+        Box {
+            Button(
+                onClick = { setorExpanded = true },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = if (setor.isNotBlank()) setor else "Selecione o setor")
+            }
             DropdownMenu(
                 expanded = setorExpanded,
-                onDismissRequest = { setorExpanded = false }
+                onDismissRequest = { setorExpanded = false },
+                modifier = Modifier.fillMaxWidth()
             ) {
                 viewModel.setores.forEach { s ->
                     DropdownMenuItem(
@@ -237,8 +235,11 @@ fun EstoqueScreen(viewModel: EstoqueViewModel) {
     // Compute list of products not yet counted in the selected sector.
     val listaNaoContados = viewModel.produtos.filter { it.setor == setorAtual }
         .filter { p -> viewModel.estoque.none { it.codigo == p.codigo } }
-    // Toggle to display non‑counted products instead of current inventory.
-    var showNotCounted by remember { mutableStateOf(false) }
+    // Dialog toggle for selecting products not yet counted
+    var showNaoContadosDialog by remember { mutableStateOf(false) }
+
+    // FocusRequester for directing focus to the quantity field after selecting a product
+    val quantityFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
 
     Column(modifier = Modifier.padding(16.dp)) {
         Text(text = "Gerenciamento de Estoque", fontWeight = FontWeight.Bold)
@@ -255,12 +256,61 @@ fun EstoqueScreen(viewModel: EstoqueViewModel) {
                 }
             }
         }
+
+        // Dialog listing products not yet counted.  When a product is selected
+        // its code and description are filled into the form and focus moves
+        // to the quantity field.
+        if (showNaoContadosDialog) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showNaoContadosDialog = false },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showNaoContadosDialog = false }) { Text("Fechar") }
+                },
+                title = { Text("Produtos não contados") },
+                text = {
+                    if (listaNaoContados.isEmpty()) {
+                        Text("Todos os produtos já foram contados neste setor.")
+                    } else {
+                        LazyColumn {
+                            items(listaNaoContados) { product ->
+                                androidx.compose.material3.Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                        .clickable {
+                                            codigo = product.codigo
+                                            descricao = product.descricao
+                                            quantidadeText = ""
+                                            showNaoContadosDialog = false
+                                            // request focus on quantity field
+                                            quantityFocusRequester.requestFocus()
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column {
+                                            Text(product.codigo, fontWeight = FontWeight.Bold)
+                                            Text(product.descricao, color = Color.DarkGray)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            )
+        }
         Spacer(modifier = Modifier.height(12.dp))
-        // Toggle to display products that have not been counted in this sector
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = showNotCounted, onCheckedChange = { showNotCounted = it })
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(text = "Mostrar produtos não contados")
+        // Botão para abrir a lista de produtos não contados no setor atual
+        Button(onClick = {
+            showNaoContadosDialog = true
+        }) {
+            Text("Produtos não contados")
         }
         Spacer(modifier = Modifier.height(12.dp))
         // Código field
@@ -279,12 +329,14 @@ fun EstoqueScreen(viewModel: EstoqueViewModel) {
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(8.dp))
-        // Quantidade field
+        // Quantidade field (focusable after selecting um produto não contado)
         OutlinedTextField(
             value = quantidadeText,
             onValueChange = { quantidadeText = it },
             label = { Text("Quantidade a Adicionar/Subtrair") },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(quantityFocusRequester)
         )
         Spacer(modifier = Modifier.height(8.dp))
         // Total atual (read only)
@@ -319,69 +371,37 @@ fun EstoqueScreen(viewModel: EstoqueViewModel) {
             Text(text = mensagem, color = Color.Gray)
         }
         Spacer(modifier = Modifier.height(16.dp))
-        Text(text = if (showNotCounted) "Produtos não contados" else "Itens em Estoque", fontWeight = FontWeight.Bold)
+        Text(text = "Itens em Estoque", fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
-        if (!showNotCounted && lista.isEmpty()) {
+        if (lista.isEmpty()) {
             Text(text = "Nenhum item em estoque.")
-        } else if (showNotCounted && listaNaoContados.isEmpty()) {
-            Text(text = "Todos os produtos foram contados.")
         } else {
             LazyColumn {
-                if (showNotCounted) {
-                    // Show list of products that have not yet been counted
-                    items(listaNaoContados) { product ->
-                        androidx.compose.material3.Card(
+                items(lista) { item ->
+                    androidx.compose.material3.Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .clickable {
+                                // Populate form when clicked
+                                codigo = item.codigo
+                                descricao = item.descricao
+                            }
+                    ) {
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .clickable {
-                                    // Populate form when clicked and switch back to inventory mode
-                                    codigo = product.codigo
-                                    descricao = product.descricao
-                                    showNotCounted = false
-                                }
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column {
-                                    Text(text = product.codigo, fontWeight = FontWeight.Bold)
-                                    Text(text = product.descricao, color = Color.DarkGray)
-                                }
+                            Column {
+                                Text(text = item.codigo, fontWeight = FontWeight.Bold)
+                                Text(text = item.descricao, color = Color.DarkGray)
                             }
-                        }
-                    }
-                } else {
-                    // Show current inventory items
-                    items(lista) { item ->
-                        androidx.compose.material3.Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .clickable {
-                                    // Populate form when clicked
-                                    codigo = item.codigo
-                                    descricao = item.descricao
-                                }
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column {
-                                    Text(text = item.codigo, fontWeight = FontWeight.Bold)
-                                    Text(text = item.descricao, color = Color.DarkGray)
-                                }
-                                Text(
-                                    text = String.format("%.1f", item.total),
-                                    color = if (item.total < 0) Color.Red else Color.Black
-                                )
-                            }
+                            Text(
+                                text = String.format("%.1f", item.total),
+                                color = if (item.total < 0) Color.Red else Color.Black
+                            )
                         }
                     }
                 }
