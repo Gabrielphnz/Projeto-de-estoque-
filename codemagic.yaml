@@ -4,21 +4,43 @@ workflows:
     max_build_duration: 30
     environment:
       java: 17
+      vars:
+        GRADLE_VERSION: "8.14.1"
+        GITHUB_REPO_URL: "https://$GITHUB_TOKEN@github.com/Gabrielphnz/Projeto-de-estoque-.git"
     scripts:
-      - name: Clonar repositório e verificar
+      - name: Verificar e clonar repositório manualmente
         script: |
           echo "Diretório inicial: $PWD"
           ls -la
           rm -rf .
-          git clone --branch main https://github.com/Gabrielphnz/Projeto-de-estoque-.git .
+          git clone --branch main $GITHUB_REPO_URL .
           echo "Diretório após clonagem: $PWD"
           ls -la
-      - name: Definir permissões do Gradle Wrapper
-        script: chmod +x gradlew
+      - name: Definir permissões do Gradle Wrapper (fallback)
+        script: |
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+          else
+            echo "Gradle Wrapper não encontrado. Instalando Gradle global."
+            wget https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip
+            unzip gradle-$GRADLE_VERSION-bin.zip
+            export PATH=$PATH:$PWD/gradle-$GRADLE_VERSION/bin
+            gradle --version
+          fi
       - name: Limpar projeto
-        script: ./gradlew clean --stacktrace --info
+        script: |
+          if [ -f gradlew ]; then
+            ./gradlew clean --stacktrace --info
+          else
+            gradle clean --stacktrace --info
+          fi
       - name: Construir APK de Depuração
-        script: ./gradlew assembleDebug --stacktrace --info
+        script: |
+          if [ -f gradlew ]; then
+            ./gradlew assembleDebug --stacktrace --info
+          else
+            gradle assembleDebug --stacktrace --info
+          fi
     artifacts:
       - app/build/outputs/**/*.apk
     publishing:
