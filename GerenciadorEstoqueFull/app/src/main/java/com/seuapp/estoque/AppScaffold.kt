@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.seuapp.estoque
 
 import android.graphics.pdf.PdfDocument
