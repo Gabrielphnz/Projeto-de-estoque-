@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Tema base do app (Material 3) -->
-    <style name="Theme.App" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Personalizações opcionais aqui -->
-        <!-- <item name="android:statusBarColor">@android:color/transparent</item> -->
-    </style>
-</resources>
