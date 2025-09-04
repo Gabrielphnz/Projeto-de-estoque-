@@ -1,19 +1,36 @@
 workflows:
   android-app:
-    name: Build Android App
+    # Nome do workflow a ser exibido no Codemagic
+    name: Build and Publish Android App
+    # Tempo máximo de build em minutos
     max_build_duration: 60
+    # Tipo de instância. Para apps Android, o Linux básico é suficiente
     environment:
+      # Versão do Java usada pelo Gradle
       java: 17
+      # Se precisar de credenciais (por exemplo, keystore), defina grupos secretos aqui
+      # groups:
+      #   - keystore_credentials
+    # Scripts executados na pipeline
     scripts:
+      # Limpa o projeto
       - name: Clean project
-        script: cd GerenciadorEstoqueFull && gradle clean
+        script: cd GerenciadorEstoqueFull && ./gradlew clean
+      # Compila APK de debug
       - name: Assemble Debug APK
-        script: cd GerenciadorEstoqueFull && gradle assembleDebug
+        script: cd GerenciadorEstoqueFull && ./gradlew assembleDebug
+      # Compila APK de release (ajuste a assinatura no build.gradle se necessário)
       - name: Assemble Release APK
-        script: cd GerenciadorEstoqueFull && gradle assembleRelease
+        script: cd GerenciadorEstoqueFull && ./gradlew assembleRelease
+    # Artefatos salvos após o build – esses são os APKs
     artifacts:
-      - GerenciadorEstoqueFull/app/build/outputs/**/*.apk
+      - GerenciadorEstoqueFull/app/build/outputs/apk/debug/app-debug.apk
+      - GerenciadorEstoqueFull/app/build/outputs/apk/release/app-release.apk
+    # Publicação (envio) dos artefatos
     publishing:
       email:
         recipients:
           - seu-email@exemplo.com
+      # Pode adicionar outros canais (Slack, webhook etc.) se desejar
+      # slack:
+      #   url: $SLACK_WEBHOOK_URL
