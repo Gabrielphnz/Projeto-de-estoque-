@@ -64,6 +64,20 @@ import androidx.compose.material3.Card
 import com.seuapp.estoque.Product
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 
 /**
  * Top level scaffold for the stock manager application.  Presents four
@@ -130,8 +144,10 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
     // main screen always shows the full list of products; search is
     // provided in the "Ver todos os produtos" dialog.
     var searchTerm by remember { mutableStateOf("") }
-    // Multi-select state: holds the codes of currently selected products
+    var showAllProductsDialog by remember { mutableStateOf(false) }
+    // seleção em lote
     val selectedCodes = remember { mutableStateListOf<String>() }
+
     // Track selected sector for batch reassignment
     var batchSector by remember { mutableStateOf("") }
     var showBatchAssignDialog by remember { mutableStateOf(false) }
@@ -438,68 +454,121 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
         // Full screen dialog listing all products for bulk management.  A search
         // field inside the dialog allows filtering by code or description.
         if (showAllProductsDialog) {
-            // Local search term for this dialog
-            var dialogSearch by remember { mutableStateOf("") }
-            AlertDialog(
-                onDismissRequest = { showAllProductsDialog = false },
-                title = { Text("Lista completa de produtos") },
-                text = {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        OutlinedTextField(
-                            value = dialogSearch,
-                            onValueChange = { dialogSearch = it },
-                            label = { Text("Procurar item") },
+    var query by remember { mutableStateOf("") }
+
+    // Produtos filtrados por busca (código/descrição)
+    val dialogProducts = remember(query, viewModel.produtos) {
+        val q = query.trim().lowercase()
+        if (q.isBlank()) viewModel.produtos
+        else viewModel.produtos.filter { p ->
+            p.codigo.lowercase().contains(q) || p.descricao.lowercase().contains(q)
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = { showAllProductsDialog = false },
+        confirmButton = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                TextButton(onClick = { selectedCodes.clear() }) {
+                    Text("Limpar seleção")
+                }
+                TextButton(onClick = { showAllProductsDialog = false }) {
+                    Text("Fechar")
+                }
+            }
+        },
+        title = { Text("Lista completa de produtos") },
+        text = {
+            // Visual semelhante ao “produtos não contados”: card com lista rolável
+            Column(modifier = Modifier.fillMaxWidth()) {
+
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Procurar item (código ou descrição)") }
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                // Cabeçalho fixo (rolagem horizontal para caber tudo)
+                Row(
+                    modifier = Modifier
+                        .horizontalScroll(rememberScrollState())
+                        .fillMaxWidth()
+                        .background(Color(0xFFEFEFEF))
+                        .padding(vertical = 6.dp, horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Spacer(Modifier.width(32.dp)) // espaço do checkbox
+                    Text("Código", fontWeight = FontWeight.Bold, modifier = Modifier.width(120.dp))
+                    Text("Descrição", fontWeight = FontWeight.Bold, modifier = Modifier.width(220.dp))
+                    Text("Setor", fontWeight = FontWeight.Bold, modifier = Modifier.width(140.dp))
+                }
+
+                Spacer(Modifier.height(4.dp))
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        // altura grande e rolável (parecido com “não contados”)
+                        .heightIn(min = 240.dp, max = 520.dp)
+                ) {
+                    if (dialogProducts.isEmpty()) {
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth(),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(onDone = {})
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        val dialogProducts = if (dialogSearch.isBlank()) {
-                            viewModel.produtos
-                        } else {
-                            viewModel.produtos.filter { p ->
-                                p.codigo.contains(dialogSearch, ignoreCase = true) ||
-                                    p.descricao.contains(dialogSearch, ignoreCase = true)
-                            }
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Nenhum produto encontrado.")
                         }
-                        LazyColumn {
-                            items(dialogProducts) { product ->
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        ) {
+                            items(dialogProducts) { p ->
+                                val checked = selectedCodes.contains(p.codigo)
+
+                                // linha “clicável” + checkbox, com rolagem horizontal
                                 Row(
                                     modifier = Modifier
-                                        .horizontalScroll(rememberScrollState())
                                         .fillMaxWidth()
-                                        .padding(vertical = 4.dp)
+                                        .horizontalScroll(rememberScrollState())
                                         .clickable {
-                                            codigo = product.codigo
-                                            descricao = product.descricao
-                                            setor = product.setor
-                                            showAllProductsDialog = false
-                                            mensagem = ""
-                                        },
+                                            if (checked) selectedCodes.remove(p.codigo)
+                                            else selectedCodes.add(p.codigo)
+                                        }
+                                        .padding(vertical = 6.dp, horizontal = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    val checked = selectedCodes.contains(product.codigo)
                                     Checkbox(
                                         checked = checked,
-                                        onCheckedChange = { isChecked ->
-                                            if (isChecked) {
-                                                if (!selectedCodes.contains(product.codigo)) selectedCodes.add(product.codigo)
-                                            } else {
-                                                selectedCodes.remove(product.codigo)
-                                            }
+                                        onCheckedChange = {
+                                            if (it) selectedCodes.add(p.codigo)
+                                            else selectedCodes.remove(p.codigo)
                                         }
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(product.codigo, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                                    Text(product.descricao, modifier = Modifier.weight(2f))
-                                    Text(product.setor, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                    Text(p.codigo, modifier = Modifier.width(120.dp))
+                                    Text(p.descricao, modifier = Modifier.width(220.dp))
+                                    Text(p.setor, modifier = Modifier.width(140.dp))
                                 }
+
+                                Divider(color = Color(0xFFE0E0E0))
                             }
                         }
                     }
-                },
+                }
+            }
+        }
+    )
+},
                 confirmButton = {
                     Column {
                         if (selectedCodes.isNotEmpty()) {
