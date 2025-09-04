@@ -5,68 +5,33 @@ workflows:
     environment:
       java: 17
     scripts:
-      - name: Verificar e navegar para estrutura correta
+      - name: 🔍 DEBUG - Verificar estrutura do repositório
         script: |
+          echo "=========================================="
+          echo "DEBUG: ESTRUTURA COMPLETA DO REPOSITÓRIO"
+          echo "=========================================="
           echo "Diretório atual: $PWD"
-          echo "Conteúdo do diretório:"
+          echo "------------------------------------------"
+          echo "LISTANDO TODOS OS ARQUIVOS E PASTAS:"
           ls -la
-          
-          # Verificar se estamos no diretório correto
-          if [ -f "Settings.gradle" ] || [ -f "build.gradle" ]; then
-            echo "✅ Arquivos do projeto encontrados no diretório atual"
-          else
-            echo "❌ Arquivos do projeto NÃO encontrados. Procurando em subdiretórios..."
-            find . -name "*.gradle" -type f | head -10
-            echo "Tentando localizar o diretório do projeto..."
-            
-            # Procurar por arquivos Gradle em subdiretórios
-            PROJECT_DIR=$(find . -name "Settings.gradle" -o -name "settings.gradle" -o -name "build.gradle" | head -1 | xargs dirname 2>/dev/null || echo ".")
-            
-            if [ "$PROJECT_DIR" != "." ]; then
-              echo "Navegando para o diretório do projeto: $PROJECT_DIR"
-              cd "$PROJECT_DIR"
-              echo "Novo diretório: $PWD"
-              echo "Conteúdo:"
-              ls -la
-            else
-              echo "ERRO: Não foi possível encontrar arquivos do projeto Gradle"
-              exit 1
-            fi
-          fi
-          
-      - name: Verificar arquivos específicos
-        script: |
-          echo "Verificando arquivos essenciais:"
-          [ -f "Settings.gradle" ] && echo "✅ Settings.gradle encontrado" || echo "❌ Settings.gradle NÃO encontrado"
-          [ -f "build.gradle" ] && echo "✅ build.gradle encontrado" || echo "❌ build.gradle NÃO encontrado"
-          [ -f "app/build.gradle" ] && echo "✅ app/build.gradle encontrado" || echo "❌ app/build.gradle NÃO encontrado"
-          [ -d "app/src" ] && echo "✅ app/src encontrado" || echo "❌ app/src NÃO encontrado"
+          echo "------------------------------------------"
+          echo "PROCURANDO POR ARQUIVOS GRADLE:"
+          find . -name "*.gradle" -type f 2>/dev/null || echo "Nenhum arquivo .gradle encontrado"
+          echo "------------------------------------------"
+          echo "PROCURANDO POR ARQUIVOS KOTLIN:"
+          find . -name "*.kt" -type f | head -5
+          echo "------------------------------------------"
+          echo "PROCURANDO POR PASTA APP:"
+          find . -name "app" -type d
+          echo "=========================================="
           
       - name: Definir permissões do Gradle Wrapper
         script: |
-          if [ -f "gradlew" ]; then
-            chmod +x gradlew
-            echo "✅ gradlew tornando executável"
-          else
-            echo "⚠️  gradlew não encontrado, usando gradle do sistema"
-          fi
-          
+          chmod +x gradlew
       - name: Limpar projeto
-        script: |
-          if [ -f "gradlew" ]; then
-            ./gradlew clean --stacktrace --info
-          else
-            gradle clean --stacktrace --info
-          fi
-          
+        script: ./gradlew clean --stacktrace --info
       - name: Construir APK de Depuração
-        script: |
-          if [ -f "gradlew" ]; then
-            ./gradlew assembleDebug --stacktrace --info
-          else
-            gradle assembleDebug --stacktrace --info
-          fi
-          
+        script: ./gradlew assembleDebug --stacktrace --info
     artifacts:
       - app/build/outputs/**/*.apk
     publishing:
