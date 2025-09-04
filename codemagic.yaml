@@ -47,4 +47,3 @@ workflows:
       email:
         recipients:
           - seu-email@exemplo.com
-          
