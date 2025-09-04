@@ -62,6 +62,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
 // Import Product type for suggestions list
 import com.seuapp.estoque.Product
+import androidx.compose.foundation.rememberScrollState
 
 /**
  * Top level scaffold for the stock manager application.  Presents four
@@ -124,7 +125,9 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
     var descricao by remember { mutableStateOf("") }
     var setor by remember { mutableStateOf("") }
     var mensagem by remember { mutableStateOf("") }
-    // Search term used to filter the products list on-the-fly
+    // We keep an internal search term only for the full list dialog.  The
+    // main screen always shows the full list of products; search is
+    // provided in the "Ver todos os produtos" dialog.
     var searchTerm by remember { mutableStateOf("") }
     // Multi-select state: holds the codes of currently selected products
     val selectedCodes = remember { mutableStateListOf<String>() }
@@ -200,17 +203,8 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
         Text(text = "Cadastro de Produtos", fontWeight = FontWeight.Bold, fontSize = 18.sp)
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Search bar to filter products by code or description
-        OutlinedTextField(
-            value = searchTerm,
-            onValueChange = { searchTerm = it },
-            label = { Text("Pesquisar produto") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { /* nothing */ })
-        )
-        Spacer(modifier = Modifier.height(12.dp))
+        // Removed the search field from the main form.  Filtering is done
+        // within the "Ver todos os produtos" dialog instead.
         // Código do Produto
         // Define focus requesters to support moving focus between fields via IME actions
         val descricaoFocusRequester = remember { FocusRequester() }
@@ -448,10 +442,9 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
         Spacer(modifier = Modifier.height(16.dp))
         Text(text = "Produtos Cadastrados", fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
-        val filteredProducts = viewModel.produtos.filter { p ->
-            p.codigo.contains(searchTerm, ignoreCase = true) ||
-                p.descricao.contains(searchTerm, ignoreCase = true)
-        }
+        // Always show the full list of products in the main view.  Use the
+        // search field inside the full list dialog to filter items.
+        val filteredProducts = viewModel.produtos
         // Provide a larger scrollable area using weight so that the list can grow
         if (filteredProducts.isEmpty()) {
             Text("Nenhum produto encontrado.")
@@ -465,6 +458,7 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
                     ) {
                         Row(
                             modifier = Modifier
+                                .horizontalScroll(rememberScrollState())
                                 .fillMaxWidth()
                                 .padding(horizontal = 4.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -507,88 +501,98 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
         }
     }
 
-    // Full screen dialog listing all products for bulk management
-    if (showAllProductsDialog) {
-        AlertDialog(
-            onDismissRequest = { showAllProductsDialog = false },
-            title = { Text("Lista completa de produtos") },
-            text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    // Scrollable list of all products filtered by searchTerm.  Avoid
-                    // referencing filteredProducts here because it is defined later in the
-                    // screen scope.  Compute the filtered list directly.
-                    val dialogProducts = if (searchTerm.isBlank()) {
-                        viewModel.produtos
-                    } else {
-                        viewModel.produtos.filter { p ->
-                            p.codigo.contains(searchTerm, ignoreCase = true) ||
-                                p.descricao.contains(searchTerm, ignoreCase = true)
+        // Full screen dialog listing all products for bulk management.  A search
+        // field inside the dialog allows filtering by code or description.
+        if (showAllProductsDialog) {
+            // Local search term for this dialog
+            var dialogSearch by remember { mutableStateOf("") }
+            AlertDialog(
+                onDismissRequest = { showAllProductsDialog = false },
+                title = { Text("Lista completa de produtos") },
+                text = {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = dialogSearch,
+                            onValueChange = { dialogSearch = it },
+                            label = { Text("Procurar item") },
+                            modifier = Modifier
+                                .fillMaxWidth(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = {})
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        val dialogProducts = if (dialogSearch.isBlank()) {
+                            viewModel.produtos
+                        } else {
+                            viewModel.produtos.filter { p ->
+                                p.codigo.contains(dialogSearch, ignoreCase = true) ||
+                                    p.descricao.contains(dialogSearch, ignoreCase = true)
+                            }
                         }
-                    }
-                    LazyColumn {
-                        items(dialogProducts) { product ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
-                                    .clickable {
-                                        codigo = product.codigo
-                                        descricao = product.descricao
-                                        setor = product.setor
-                                        showAllProductsDialog = false
-                                        mensagem = ""
-                                    },
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                val checked = selectedCodes.contains(product.codigo)
-                                Checkbox(
-                                    checked = checked,
-                                    onCheckedChange = { isChecked ->
-                                        if (isChecked) {
-                                            if (!selectedCodes.contains(product.codigo)) selectedCodes.add(product.codigo)
-                                        } else {
-                                            selectedCodes.remove(product.codigo)
+                        LazyColumn {
+                            items(dialogProducts) { product ->
+                                Row(
+                                    modifier = Modifier
+                                        .horizontalScroll(rememberScrollState())
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                        .clickable {
+                                            codigo = product.codigo
+                                            descricao = product.descricao
+                                            setor = product.setor
+                                            showAllProductsDialog = false
+                                            mensagem = ""
+                                        },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val checked = selectedCodes.contains(product.codigo)
+                                    Checkbox(
+                                        checked = checked,
+                                        onCheckedChange = { isChecked ->
+                                            if (isChecked) {
+                                                if (!selectedCodes.contains(product.codigo)) selectedCodes.add(product.codigo)
+                                            } else {
+                                                selectedCodes.remove(product.codigo)
+                                            }
                                         }
-                                    }
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(product.codigo, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                                Text(product.descricao, modifier = Modifier.weight(2f))
-                                Text(product.setor, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(product.codigo, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                    Text(product.descricao, modifier = Modifier.weight(2f))
+                                    Text(product.setor, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                }
                             }
                         }
                     }
-                }
-            },
-            confirmButton = {
-                // Actions appear only when at least one product is selected
-                Column {
-                    if (selectedCodes.isNotEmpty()) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Button(onClick = {
-                                // Delete selected
-                                selectedCodes.forEach { code -> viewModel.deleteProduct(code) }
-                                selectedCodes.clear()
-                                showAllProductsDialog = false
-                            }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) {
-                                Text("Excluir selecionados")
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Button(onClick = {
-                                showBatchAssignDialog = true
-                                showAllProductsDialog = false
-                            }) {
-                                Text("Mover setor")
+                },
+                confirmButton = {
+                    Column {
+                        if (selectedCodes.isNotEmpty()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Button(onClick = {
+                                    selectedCodes.forEach { code -> viewModel.deleteProduct(code) }
+                                    selectedCodes.clear()
+                                    showAllProductsDialog = false
+                                }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) {
+                                    Text("Excluir selecionados")
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Button(onClick = {
+                                    showBatchAssignDialog = true
+                                    showAllProductsDialog = false
+                                }) {
+                                    Text("Mover setor")
+                                }
                             }
                         }
                     }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAllProductsDialog = false }) { Text("Fechar") }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAllProductsDialog = false }) { Text("Fechar") }
-            }
-        )
-    }
+            )
+        }
 }
 
 /**
@@ -850,9 +854,11 @@ fun EstoqueScreen(viewModel: EstoqueViewModel) {
             singleLine = true,
             keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
             keyboardActions = KeyboardActions(onNext = {
-                // When pressing next, attempt to auto fill using the code
+                // When pressing next on the code field, attempt to auto fill and
+                // move focus directly to the quantity field rather than the
+                // description field.
                 handleCodeEntered()
-                descFocusRequester.requestFocus()
+                quantityFocusRequester.requestFocus()
             })
         )
         Spacer(modifier = Modifier.height(8.dp))
@@ -1105,6 +1111,7 @@ fun RelatoriosScreen(viewModel: EstoqueViewModel) {
         // Table header with light grey background and bold text for readability
         Row(
             modifier = Modifier
+                .horizontalScroll(rememberScrollState())
                 .fillMaxWidth()
                 .background(Color(0xFFE0E0E0))
                 .padding(vertical = 6.dp, horizontal = 4.dp)
@@ -1147,6 +1154,7 @@ fun RelatoriosScreen(viewModel: EstoqueViewModel) {
                         val backgroundColor = if (index % 2 == 0) Color(0xFFF7F7F7) else Color.White
                         Row(
                             modifier = Modifier
+                                .horizontalScroll(rememberScrollState())
                                 .fillMaxWidth()
                                 .background(backgroundColor)
                                 .padding(vertical = 6.dp, horizontal = 4.dp)
@@ -1160,6 +1168,7 @@ fun RelatoriosScreen(viewModel: EstoqueViewModel) {
                         val backgroundColor = if (index % 2 == 0) Color(0xFFF7F7F7) else Color.White
                         Row(
                             modifier = Modifier
+                                .horizontalScroll(rememberScrollState())
                                 .fillMaxWidth()
                                 .background(backgroundColor)
                                 .padding(vertical = 6.dp, horizontal = 4.dp)
