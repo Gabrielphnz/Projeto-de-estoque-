@@ -4,19 +4,32 @@ workflows:
     max_build_duration: 30
     environment:
       java: 17
+      vars:
+        CM_BUILD_DIR: /Users/builder/clone
     scripts:
+      - name: Verificar diretório inicial
+        script: |
+          echo "Diretório atual: $PWD"
+          ls -la
       - name: Clonar repositório manualmente
         script: |
-          rm -rf /Users/builder/clone/*
-          git clone --no-checkout https://github.com/Gabrielphnz/Projeto-de-estoque-.git .
-          git checkout main
+          rm -rf $CM_BUILD_DIR/*
+          git clone --branch main https://github.com/Gabrielphnz/Projeto-de-estoque-.git $CM_BUILD_DIR
+          cd $CM_BUILD_DIR
+          echo "Diretório após clonagem: $PWD"
           ls -la
       - name: Definir permissões do Gradle Wrapper
-        script: chmod +x gradlew
+        script: |
+          cd $CM_BUILD_DIR
+          chmod +x gradlew
       - name: Limpar projeto
-        script: ./gradlew clean --stacktrace --info
+        script: |
+          cd $CM_BUILD_DIR
+          ./gradlew clean --stacktrace --info
       - name: Construir APK de Depuração
-        script: ./gradlew assembleDebug --stacktrace --info
+        script: |
+          cd $CM_BUILD_DIR
+          ./gradlew assembleDebug --stacktrace --info
     artifacts:
       - app/build/outputs/**/*.apk
     publishing:
