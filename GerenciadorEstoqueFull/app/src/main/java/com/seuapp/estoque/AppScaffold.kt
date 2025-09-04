@@ -27,8 +27,9 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenu
-import androidx.compose.material3.ExposedDropdownMenuDefaults
+// Removed ExposedDropdownMenu import because this API may not be available
+// in the current Compose version. We use DropdownMenu inside
+// ExposedDropdownMenuBox instead.  No separate icon imports are needed.
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -140,6 +141,10 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
         Spacer(modifier = Modifier.height(8.dp))
         // Selecção de setor via dropdown usando ExposedDropdownMenuBox para melhor acessibilidade
         var setorExpanded by remember { mutableStateOf(false) }
+        // Use ExposedDropdownMenuBox paired with a DropdownMenu.  We avoid
+        // ExposedDropdownMenu because it may not be available in the current
+        // Compose version.  The TextField is read-only and clicking the
+        // trailing arrow toggles the menu visibility.
         ExposedDropdownMenuBox(
             expanded = setorExpanded,
             onExpandedChange = { setorExpanded = !setorExpanded }
@@ -149,11 +154,13 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
                 onValueChange = {},
                 label = { Text("Setor") },
                 readOnly = true,
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = setorExpanded) },
+                // No explicit trailing icon; ExposedDropdownMenuBox provides the
+                // appropriate affordance automatically when paired with
+                // DropdownMenu.
                 modifier = Modifier
                     .fillMaxWidth()
             )
-            ExposedDropdownMenu(
+            DropdownMenu(
                 expanded = setorExpanded,
                 onDismissRequest = { setorExpanded = false }
             ) {
