@@ -28,7 +28,9 @@ android {
     }
 
     composeOptions {
+        // Kotlin 1.9.x -> 1.5.14 ; Se estiver em Kotlin 2.0.x, troque para 1.6.10
         kotlinCompilerExtensionVersion = "1.5.14"
+        // kotlinCompilerExtensionVersion = "1.6.10"
     }
 
     compileOptions {
@@ -44,19 +46,27 @@ android {
 dependencies {
     implementation "androidx.core:core-ktx:1.13.1"
     implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.8.3"
-    implementation "androidx.activity:activity-compose:1.9.0"
+    implementation "androidx.activity:activity-compose:1.9.3"
 
-    implementation(platform("androidx.compose:compose-bom:2024.05.00"))
+    // BOM do Compose (mantém versões compatíveis entre os artefatos)
+    implementation platform("androidx.compose:compose-bom:2024.10.01")
+
+    // Compose UI
     implementation "androidx.compose.ui:ui"
     implementation "androidx.compose.ui:ui-graphics"
     implementation "androidx.compose.ui:ui-tooling-preview"
+
+    // Material 3 (se usar Material 2, comente esta e use material:material)
     implementation "androidx.compose.material3:material3"
 
+    // Lifecycle (opcional, útil para ViewModel/Compose)
     implementation "androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3"
     implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.3"
 
+    // Material Components (views clássicas) — opcional
     implementation "com.google.android.material:material:1.12.0"
 
+    // Debug
     debugImplementation "androidx.compose.ui:ui-tooling"
     debugImplementation "androidx.compose.ui:ui-test-manifest"
 }
