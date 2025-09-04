@@ -30,7 +30,7 @@ workflows:
     publishing:
       email:
         recipients:
-          - seu-email@exemplo.com
+          - gabrielphnz@gmail.com
       # Pode adicionar outros canais (Slack, webhook etc.) se desejar
       # slack:
       #   url: $SLACK_WEBHOOK_URL
