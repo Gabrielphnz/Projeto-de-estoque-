@@ -1,22 +1,13 @@
 package com.seuapp.estoque.ui
 
-import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 
-class EstoqueViewModel: ViewModel() {
-    private val _msg = MutableStateFlow("Pronto")
-    val msg: StateFlow<String> = _msg
+class EstoqueViewModel : ViewModel() {
+    var quantidade by mutableStateOf(0)
+        private set
 
-    companion object {
-        fun provideFactory(ctx: Context): ViewModelProvider.Factory =
-            object : ViewModelProvider.Factory {
-                override fun <T : ViewModel?> create(modelClass: Class<T>): T {
-                    @Suppress("UNCHECKED_CAST")
-                    return EstoqueViewModel() as T
-                }
-            }
-    }
+    fun incrementar() { quantidade++ }
 }
