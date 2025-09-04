@@ -514,10 +514,19 @@ fun CadastroProdutosScreen(viewModel: EstoqueViewModel) {
             title = { Text("Lista completa de produtos") },
             text = {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    // Scrollable list of all products (filtered by searchTerm)
-                    val allProducts = if (searchTerm.isBlank()) viewModel.produtos else filteredProducts
+                    // Scrollable list of all products filtered by searchTerm.  Avoid
+                    // referencing filteredProducts here because it is defined later in the
+                    // screen scope.  Compute the filtered list directly.
+                    val dialogProducts = if (searchTerm.isBlank()) {
+                        viewModel.produtos
+                    } else {
+                        viewModel.produtos.filter { p ->
+                            p.codigo.contains(searchTerm, ignoreCase = true) ||
+                                p.descricao.contains(searchTerm, ignoreCase = true)
+                        }
+                    }
                     LazyColumn {
-                        items(allProducts) { product ->
+                        items(dialogProducts) { product ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1494,131 +1503,6 @@ fun UsuariosScreen(viewModel: EstoqueViewModel) {
                                 })
                                 Text("Gerenciar Usuários", modifier = Modifier.weight(1f))
                             }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * User management screen.  Only available to admin users.  Allows adding
- * new users and editing permissions for existing users.  The admin user
- * cannot be deleted.
- */
-@Composable
-fun UsuariosScreen(viewModel: EstoqueViewModel) {
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var canEditProducts by remember { mutableStateOf(true) }
-    var canEditInventory by remember { mutableStateOf(true) }
-    var canViewReports by remember { mutableStateOf(true) }
-    var canManageUsers by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf("") }
-
-    Column(modifier = Modifier.padding(16.dp)) {
-        Text(text = "Cadastro de Usuários", fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
-        OutlinedTextField(
-            value = username,
-            onValueChange = { username = it },
-            label = { Text("Nome de usuário") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Senha") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = canEditProducts, onCheckedChange = { canEditProducts = it })
-            Text("Pode editar produtos")
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = canEditInventory, onCheckedChange = { canEditInventory = it })
-            Text("Pode editar estoque")
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = canViewReports, onCheckedChange = { canViewReports = it })
-            Text("Pode ver relatórios")
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = canManageUsers, onCheckedChange = { canManageUsers = it })
-            Text("Pode gerenciar usuários")
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(onClick = {
-            if (username.isBlank() || password.isBlank()) {
-                message = "Nome de usuário e senha são obrigatórios"
-            } else {
-                viewModel.addUser(EstoqueViewModel.User(username, password, canEditProducts, canEditInventory, canViewReports, canManageUsers, isAdmin = false))
-                message = "Usuário adicionado"
-                username = ""
-                password = ""
-                canEditProducts = true
-                canEditInventory = true
-                canViewReports = true
-                canManageUsers = false
-            }
-        }) {
-            Text("Adicionar Usuário")
-        }
-        if (message.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(message, color = Color.Gray)
-        }
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(text = "Usuários Cadastrados", fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(4.dp))
-        LazyColumn {
-            items(viewModel.users) { user ->
-                if (!user.isAdmin) {
-                    Card(modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)) {
-                        Column(modifier = Modifier.padding(8.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(user.username, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                                Button(onClick = { viewModel.deleteUser(user.username) }, colors = ButtonDefaults.buttonColors(containerColor = Color.LightGray)) {
-                                    Text("Excluir")
-                                }
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(checked = user.canEditProducts, onCheckedChange = {
-                                    viewModel.updateUserPermissions(user.username, it, user.canEditInventory, user.canViewReports, user.canManageUsers)
-                                })
-                                Text("Produtos")
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Checkbox(checked = user.canEditInventory, onCheckedChange = {
-                                    viewModel.updateUserPermissions(user.username, user.canEditProducts, it, user.canViewReports, user.canManageUsers)
-                                })
-                                Text("Estoque")
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Checkbox(checked = user.canViewReports, onCheckedChange = {
-                                    viewModel.updateUserPermissions(user.username, user.canEditProducts, user.canEditInventory, it, user.canManageUsers)
-                                })
-                                Text("Relatórios")
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Checkbox(checked = user.canManageUsers, onCheckedChange = {
-                                    viewModel.updateUserPermissions(user.username, user.canEditProducts, user.canEditInventory, user.canViewReports, it)
-                                })
-                                Text("Usuários")
-                            }
-                        }
-                    }
-                } else {
-                    Card(modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)) {
-                        Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(user.username + " (admin)", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
